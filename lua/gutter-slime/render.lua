@@ -28,11 +28,9 @@ _G.__gutter_slime_statuscolumn = function()
     return ""
   end
 
-  local winid = vim.g.statusline_winid
-  if not winid or winid == 0 then
-    return " "
-  end
-
+  -- In statuscolumn context the expression is evaluated for the window being
+  -- drawn; nvim_get_current_win() returns that window's id.
+  local winid = vim.api.nvim_get_current_win()
   local bufnr = vim.api.nvim_win_get_buf(winid)
   local lnum = vim.v.lnum
   local bucket = cache.get_bucket(bufnr, lnum)
@@ -47,9 +45,10 @@ _G.__gutter_slime_statuscolumn = function()
   end
 
   local group = palette.group_for_bucket(bucket)
-  -- Emit a single space wrapped in the highlight group so the gutter cell
-  -- gets the background colour without any glyph.
-  return "%#" .. group .. "# %*"
+  -- Return a highlight-group-wrapped space. Inside %{%...%} we can return
+  -- statuscolumn item strings including %#Hl# tokens. We do NOT use %* here
+  -- because Neovim resets the highlight after each %{%...%} block anyway.
+  return "%#" .. group .. "# "
 end
 
 --- Attach the heatmap renderer to a window.

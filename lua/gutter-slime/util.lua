@@ -51,26 +51,25 @@ end
 function M.is_eligible_buffer(bufnr)
   local cfg = require("gutter-slime.config").get()
 
+  -- Only normal file buffers (buftype == "") are eligible.
+  -- Special cases: terminal, quickfix, nofile, prompt, etc. are all excluded.
   local buftype = vim.bo[bufnr].buftype
   if buftype ~= "" then
-    -- Anything that is not a normal file buffer (terminal, quickfix, etc.) is
-    -- ineligible.
-    if cfg.disable_in_terminal and buftype == "terminal" then
-      return false
-    end
-    if buftype ~= "" then
-      return false
-    end
-  end
-
-  if cfg.disable_in_diff and vim.wo.diff then
     return false
   end
 
-  local filetype = vim.bo[bufnr].filetype
-  if filetype == "" then
-    return false
+  if cfg.disable_in_diff then
+    -- vim.wo uses the current window; check all windows showing this buffer.
+    for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+      if vim.wo[winid].diff then
+        return false
+      end
+    end
   end
+
+  -- Allow buffers whose filetype hasn't been detected yet (e.g. on BufEnter
+  -- before FileType fires). The filetype check is intentionally omitted here;
+  -- callers may re-check after FileType if needed.
 
   return true
 end
