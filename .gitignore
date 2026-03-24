@@ -1,0 +1,18 @@
+# Lua compiled
+*.luac
+
+# Editor
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Testing
+.luacov
+luacov.stats.out
+luacov.report.out
+
+# Build artifacts
+doc/tags

@@ -1,0 +1,194 @@
+*gutter-slime.txt*   Per-line git recency heatmap in the Neovim gutter
+
+Author: (your name here)
+License: MIT
+
+==============================================================================
+CONTENTS                                                *gutter-slime-contents*
+
+  1. Introduction ......................................... |gutter-slime-intro|
+  2. Requirements .................................. |gutter-slime-requirements|
+  3. Installation .................................. |gutter-slime-installation|
+  4. Quick Start .................................... |gutter-slime-quickstart|
+  5. Configuration ................................ |gutter-slime-configuration|
+  6. Commands .......................................... |gutter-slime-commands|
+  7. Highlight Groups ................................ |gutter-slime-highlights|
+  8. Health Check ...................................... |gutter-slime-health|
+  9. FAQ .................................................... |gutter-slime-faq|
+
+==============================================================================
+1. INTRODUCTION                                            *gutter-slime-intro*
+
+gutter-slime renders a per-line git recency heatmap in the sign column.
+Brighter gutter cells indicate recently changed lines; darker cells indicate
+older changes. The brightness scale uses absolute age thresholds so the same
+commit age looks similar across different files and repositories.
+
+The heatmap is implemented through Neovim's |'statuscolumn'| option so it
+produces a true per-line background colour rather than a sign glyph.
+
+==============================================================================
+2. REQUIREMENTS                                      *gutter-slime-requirements*
+
+  - Neovim >= 0.10
+  - git in PATH
+
+==============================================================================
+3. INSTALLATION                                      *gutter-slime-installation*
+
+lazy.nvim: >lua
+  {
+    "YOUR_USER/gutter-slime",
+    config = function()
+      require("gutter-slime").setup()
+    end,
+  }
+<
+
+packer.nvim: >lua
+  use {
+    "YOUR_USER/gutter-slime",
+    config = function()
+      require("gutter-slime").setup()
+    end,
+  }
+<
+
+==============================================================================
+4. QUICK START                                         *gutter-slime-quickstart*
+
+Add the following to your Neovim configuration: >lua
+
+  require("gutter-slime").setup()
+<
+
+The plugin will begin rendering a gutter heatmap for tracked files
+automatically. Run |:checkhealth| gutter-slime to verify the environment.
+
+==============================================================================
+5. CONFIGURATION                                    *gutter-slime-configuration*
+
+Pass an options table to |setup()|. All fields are optional. >lua
+
+  require("gutter-slime").setup({
+    -- Whether the heatmap is active after setup.
+    enabled = true,
+
+    -- Milliseconds to wait after text changes before refreshing blame.
+    debounce_ms = 150,
+
+    -- Number of age buckets for committed lines.
+    bucket_count = 7,
+
+    -- Lines changed within recent_days get mapped to the freshest buckets.
+    recent_days = 7,
+
+    -- Lines older than old_days collapse into the oldest bucket.
+    old_days = 180,
+
+    -- Age weighting curve. Options: "exp", "linear", "logistic".
+    curve = "exp",
+
+    -- Half-life (in days) for exponential decay weighting.
+    half_life_days = 3,
+
+    -- Show a distinct highlight for uncommitted/unsaved lines.
+    show_uncommitted = true,
+
+    -- Disable the plugin for files exceeding this line count.
+    max_file_lines = 20000,
+
+    -- Disable the plugin for files exceeding this byte size.
+    max_file_bytes = 1024 * 1024,
+
+    -- Disable rendering in diff mode.
+    disable_in_diff = true,
+
+    -- Disable rendering in terminal buffers.
+    disable_in_terminal = true,
+
+    -- Disable rendering for files exceeding size limits.
+    disable_in_large_files = true,
+
+    -- Optional highlight group whose foreground colour is used as the
+    -- bright accent endpoint. Defaults to automatic theme derivation.
+    accent_hl = nil,
+
+    -- Enable verbose debug notifications.
+    debug = false,
+  })
+<
+
+==============================================================================
+6. COMMANDS                                             *gutter-slime-commands*
+
+                                                        *:GutterSlimeEnable*
+:GutterSlimeEnable      Enable the heatmap globally.
+
+                                                       *:GutterSlimeDisable*
+:GutterSlimeDisable     Disable the heatmap and remove all gutter colouring.
+
+                                                        *:GutterSlimeToggle*
+:GutterSlimeToggle      Toggle the heatmap on/off.
+
+                                                       *:GutterSlimeRefresh*
+:GutterSlimeRefresh     Force a fresh blame run and re-render for the current
+                        buffer. Useful after external git operations.
+
+                                                       *:GutterSlimeInspect*
+:GutterSlimeInspect     Print diagnostic information about the current
+                        buffer's heatmap state (bucket, timestamp, palette
+                        groups, attached windows). Useful for debugging.
+
+==============================================================================
+7. HIGHLIGHT GROUPS                                    *gutter-slime-highlights*
+
+The plugin defines the following highlight groups. Override them in your
+colorscheme or after-colorscheme hook to customise colours.
+
+  GutterSlimeBucket0    Uncommitted / unsaved lines (brightest).
+  GutterSlimeBucket1    Most recently committed lines.
+  GutterSlimeBucket2    ...
+  ...
+  GutterSlimeBucketN    Oldest committed lines (near-invisible).
+
+The exact number of groups matches `bucket_count + 1`.
+
+Example override: >lua
+  vim.api.nvim_set_hl(0, "GutterSlimeBucket0", { bg = "#ff8800" })
+<
+
+==============================================================================
+8. HEALTH CHECK                                           *gutter-slime-health*
+
+Run |:checkhealth| gutter-slime to verify:
+
+  - Neovim version compatibility
+  - git availability
+  - |'statuscolumn'| support
+  - Plugin enabled state
+  - Palette build status
+
+==============================================================================
+9. FAQ                                                       *gutter-slime-faq*
+
+Q: My existing statuscolumn config is gone after enabling gutter-slime.
+
+A: The plugin prepends its cell to your existing `statuscolumn` expression.
+   If you had a complex expression that is now broken, please open an issue.
+   A composable rendering mode is planned for a future release.
+
+Q: The gutter looks the same for all lines.
+
+A: Run |:GutterSlimeInspect| to check whether blame data has been loaded and
+   whether the palette groups have been built. Also run |:checkhealth|
+   gutter-slime to diagnose environment issues.
+
+Q: Can I use gutter-slime alongside gitsigns or similar plugins?
+
+A: Yes. gutter-slime uses `statuscolumn` for background colouring only and
+   does not use sign extmarks, so it should coexist with sign-based plugins.
+   See the coexistence note in the README for current limitations.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

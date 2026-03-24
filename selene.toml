@@ -1,0 +1,9 @@
+name = "gutter-slime"
+std = "lua51+vim"
+
+[rules]
+empty_if = "warn"
+global_usage = "warn"
+shadowing = "warn"
+unused_variable = "warn"
+undefined_variable = "warn"
