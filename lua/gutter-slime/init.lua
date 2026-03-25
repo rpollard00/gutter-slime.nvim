@@ -6,12 +6,52 @@ local M = {}
 local _initialized = false
 local _enabled = false
 
--- ---------------------------------------------------------------------------
--- Helpers
--- ---------------------------------------------------------------------------
+local ZOOM_LADDER_DAYS = {
+  180,
+  120,
+  90,
+  60,
+  30,
+  21,
+  14,
+  10,
+  7,
+  5,
+  3,
+  2,
+  1.5,
+  1,
+  0.75,
+  0.5,
+  0.333,
+  0.25,
+  0.167,
+  0.125,
+  0.083,
+  1 / 24,
+}
 
 local function log_debug(msg, ...)
   require("gutter-slime.util").debug(msg, ...)
+end
+
+---@param pos number
+---@param curve string
+---@return number
+local function apply_curve(pos, curve)
+  if curve == "linear" then
+    return pos
+  end
+  if curve == "recent" then
+    return pos ^ 1.6
+  end
+  if curve == "old" then
+    return pos ^ 0.625
+  end
+  if curve == "smooth" then
+    return pos * pos * (3 - 2 * pos)
+  end
+  return pos
 end
 
 ---@param ts integer
@@ -22,6 +62,7 @@ local function ts_to_bucket(ts)
   end
 
   local cfg = require("gutter-slime.config").get()
+  local util = require("gutter-slime.util")
   local age_secs = os.time() - ts
   local age_days = age_secs / 86400
 
@@ -30,18 +71,115 @@ local function ts_to_bucket(ts)
   end
 
   local n = cfg.bucket_count
+  local recent_days = cfg.recent_days
   local old_days = cfg.old_days
 
+  if age_days <= recent_days then
+    return 1
+  end
   if age_days >= old_days then
     return n
   end
 
-  local pos = age_days / old_days
-  local bucket = math.floor(pos * (n - 1)) + 1
+  local span = old_days - recent_days
+  local pos = (age_days - recent_days) / span
+  local curved = util.clamp(apply_curve(pos, cfg.curve), 0, 1)
+  local bucket = math.floor(curved * (n - 1)) + 1
   return math.max(1, math.min(bucket, n))
 end
 
---- Fetch and apply git blame data for a buffer.
+---@param bufnr integer
+---@return boolean
+local function rebucket_buf(bufnr)
+  local cache = require("gutter-slime.cache")
+  local timestamps = cache.get_timestamps(bufnr)
+  if not timestamps then
+    return false
+  end
+
+  local buckets = {}
+  for i, ts in ipairs(timestamps) do
+    buckets[i] = ts_to_bucket(ts)
+  end
+
+  local stored = cache.store(
+    bufnr,
+    cache.current_request(bufnr),
+    cache.get_changedtick(bufnr) or 0,
+    buckets,
+    timestamps
+  )
+  if stored and vim.api.nvim_buf_is_valid(bufnr) then
+    require("gutter-slime.render").refresh_buf(bufnr)
+  end
+  return stored
+end
+
+local function rebucket_all()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(bufnr) then
+      rebucket_buf(bufnr)
+    end
+  end
+  if _enabled then
+    M._redraw_all()
+  end
+end
+
+---@param value number
+---@return integer
+local function closest_zoom_index(value)
+  local best_i = 1
+  local best_dist = math.huge
+  for i, entry in ipairs(ZOOM_LADDER_DAYS) do
+    local dist = math.abs(entry - value)
+    if dist < best_dist then
+      best_i = i
+      best_dist = dist
+    end
+  end
+  return best_i
+end
+
+---@param current number
+---@param toward_present boolean
+---@return number
+local function step_old_days(current, toward_present)
+  if toward_present then
+    for _, entry in ipairs(ZOOM_LADDER_DAYS) do
+      if entry < current then
+        return entry
+      end
+    end
+    return ZOOM_LADDER_DAYS[#ZOOM_LADDER_DAYS]
+  end
+
+  for i = #ZOOM_LADDER_DAYS, 1, -1 do
+    local entry = ZOOM_LADDER_DAYS[i]
+    if entry > current then
+      return entry
+    end
+  end
+  return ZOOM_LADDER_DAYS[1]
+end
+
+---@param patch table
+---@param ok_msg string|nil
+---@return boolean
+local function apply_view_patch(patch, ok_msg)
+  local ok, err = require("gutter-slime.config").update_view(patch)
+  if not ok then
+    vim.notify("gutter-slime: " .. err, vim.log.levels.WARN)
+    return false
+  end
+
+  rebucket_all()
+  if ok_msg then
+    vim.notify(ok_msg, vim.log.levels.INFO)
+  end
+  return true
+end
+
 ---@param bufnr integer
 local function apply_real_blame(bufnr)
   local path = vim.api.nvim_buf_get_name(bufnr)
@@ -94,10 +232,6 @@ local function apply_real_blame(bufnr)
   )
 end
 
--- ---------------------------------------------------------------------------
--- Public API
--- ---------------------------------------------------------------------------
-
 ---@param opts table|nil
 function M.setup(opts)
   require("gutter-slime.config").setup(opts)
@@ -122,7 +256,6 @@ function M.setup(opts)
   end
 end
 
---- Enable rendering.
 function M.enable()
   _enabled = true
   require("gutter-slime.config").current.enabled = true
@@ -136,7 +269,6 @@ function M.enable()
   vim.notify("gutter-slime enabled", vim.log.levels.INFO)
 end
 
---- Disable rendering.
 function M.disable()
   _enabled = false
   require("gutter-slime.config").current.enabled = false
@@ -144,7 +276,6 @@ function M.disable()
   vim.notify("gutter-slime disabled", vim.log.levels.INFO)
 end
 
---- Toggle rendering.
 function M.toggle()
   if _enabled then
     M.disable()
@@ -153,14 +284,102 @@ function M.toggle()
   end
 end
 
---- Refresh the current buffer.
 function M.refresh()
   local bufnr = vim.api.nvim_get_current_buf()
   require("gutter-slime.cache").clear_buf(bufnr)
   M._refresh_buf(bufnr)
 end
 
---- Print diagnostic state for the current buffer.
+---@param name string
+---@return boolean
+function M.set_curve(name)
+  return apply_view_patch({ curve = name }, string.format("gutter-slime curve: %s", name))
+end
+
+---@param value string|number
+---@return boolean
+function M.set_old(value)
+  local days, err = require("gutter-slime.config").parse_duration_days(value)
+  if days == nil then
+    vim.notify("gutter-slime: old_days " .. err, vim.log.levels.WARN)
+    return false
+  end
+  return apply_view_patch({ old_days = days }, string.format("gutter-slime old_days: %.3f", days))
+end
+
+---@param recent string|number
+---@param old string|number
+---@return boolean
+function M.set_range(recent, old)
+  local config = require("gutter-slime.config")
+  local recent_days, recent_err = config.parse_duration_days(recent)
+  if recent_days == nil then
+    vim.notify("gutter-slime: recent_days " .. recent_err, vim.log.levels.WARN)
+    return false
+  end
+  local old_days, old_err = config.parse_duration_days(old)
+  if old_days == nil then
+    vim.notify("gutter-slime: old_days " .. old_err, vim.log.levels.WARN)
+    return false
+  end
+  return apply_view_patch(
+    { recent_days = recent_days, old_days = old_days },
+    string.format("gutter-slime range: %.3f..%.3f days", recent_days, old_days)
+  )
+end
+
+---@param delta string|number
+---@return boolean
+function M.adjust_old(delta)
+  local config = require("gutter-slime.config")
+  local delta_days, err = config.parse_duration_days(delta, { allow_negative = true })
+  if delta_days == nil then
+    vim.notify("gutter-slime: adjust_old " .. err, vim.log.levels.WARN)
+    return false
+  end
+
+  local old_days = config.get().old_days + delta_days
+  return apply_view_patch({ old_days = old_days }, string.format("gutter-slime old_days: %.3f", old_days))
+end
+
+---@return boolean
+function M.step_old_newer()
+  local cfg = require("gutter-slime.config").get()
+  local next_old = step_old_days(cfg.old_days, true)
+  return apply_view_patch(
+    { old_days = next_old },
+    string.format("gutter-slime old_days: %.3f", next_old)
+  )
+end
+
+---@return boolean
+function M.step_old_older()
+  local cfg = require("gutter-slime.config").get()
+  local next_old = step_old_days(cfg.old_days, false)
+  return apply_view_patch(
+    { old_days = next_old },
+    string.format("gutter-slime old_days: %.3f", next_old)
+  )
+end
+
+---@return boolean
+function M.zoom_in()
+  return M.step_old_newer()
+end
+
+---@return boolean
+function M.zoom_out()
+  return M.step_old_older()
+end
+
+---@return boolean
+function M.reset_view()
+  require("gutter-slime.config").reset_view()
+  rebucket_all()
+  vim.notify("gutter-slime view reset", vim.log.levels.INFO)
+  return true
+end
+
 function M.inspect()
   local bufnr = vim.api.nvim_get_current_buf()
   local cache = require("gutter-slime.cache")
@@ -169,6 +388,7 @@ function M.inspect()
   local ts = cache.get_timestamp(bufnr, lnum)
   local tick = cache.get_changedtick(bufnr)
   local req = cache.current_request(bufnr)
+  local cfg = require("gutter-slime.config").get()
 
   local lines = {
     string.format("gutter-slime inspect  buf=%d  enabled=%s", bufnr, tostring(_enabled)),
@@ -177,6 +397,9 @@ function M.inspect()
     string.format("  timestamp   : %s", ts and os.date("%Y-%m-%d %H:%M:%S", ts) or "nil"),
     string.format("  changedtick : %s", tostring(tick)),
     string.format("  request_id  : %d", req),
+    string.format("  recent_days : %.3f", cfg.recent_days),
+    string.format("  old_days    : %.3f", cfg.old_days),
+    string.format("  curve       : %s", cfg.curve),
   }
 
   local palette = require("gutter-slime.palette")
@@ -196,16 +419,11 @@ function M.inspect()
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end
 
--- ---------------------------------------------------------------------------
--- Internal surface
--- ---------------------------------------------------------------------------
-
 ---@return boolean
 function M._is_enabled()
   return _enabled
 end
 
---- Refresh a buffer.
 ---@param bufnr integer
 function M._refresh_buf(bufnr)
   if not _enabled then
@@ -226,7 +444,6 @@ function M._refresh_buf(bufnr)
   apply_real_blame(bufnr)
 end
 
---- Redraw all eligible windows.
 function M._redraw_all()
   local render = require("gutter-slime.render")
   for _, winid in ipairs(vim.api.nvim_list_wins()) do
@@ -240,5 +457,8 @@ function M._redraw_all()
     end
   end
 end
+
+M._ts_to_bucket = ts_to_bucket
+M._zoom_ladder_days = ZOOM_LADDER_DAYS
 
 return M

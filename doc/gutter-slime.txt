@@ -19,10 +19,10 @@ CONTENTS                                                *gutter-slime-contents*
 ==============================================================================
 1. INTRODUCTION                                            *gutter-slime-intro*
 
-gutter-slime renders a per-line git recency heatmap in the sign column.
+gutter-slime renders a per-line git recency heatmap in the gutter.
 Brighter gutter cells indicate recently changed lines; darker cells indicate
-older changes. The brightness scale uses absolute age thresholds so the same
-commit age looks similar across different files and repositories.
+older changes. The visible age window is adjustable, so you can zoom from
+long-term history down into the last few hours.
 
 The heatmap is implemented through Neovim's |'statuscolumn'| option so it
 produces a true per-line background colour rather than a sign glyph.
@@ -80,35 +80,20 @@ Pass an options table to |setup()|. All fields are optional. >lua
     -- Number of age buckets for committed lines.
     bucket_count = 7,
 
-    -- Lines changed within recent_days get mapped to the freshest buckets.
-    recent_days = 7,
+    -- Lines changed within recent_days get mapped to the freshest bucket.
+    recent_days = 0,
 
     -- Lines older than old_days collapse into the oldest bucket.
     old_days = 180,
 
-    -- Age weighting curve. Options: "exp", "linear", "logistic".
-    curve = "exp",
-
-    -- Half-life (in days) for exponential decay weighting.
-    half_life_days = 3,
+    -- Age weighting curve. Options: "linear", "recent", "old", "smooth".
+    curve = "recent",
 
     -- Show a distinct highlight for uncommitted/unsaved lines.
     show_uncommitted = true,
 
-    -- Disable the plugin for files exceeding this line count.
-    max_file_lines = 20000,
-
-    -- Disable the plugin for files exceeding this byte size.
-    max_file_bytes = 1024 * 1024,
-
     -- Disable rendering in diff mode.
     disable_in_diff = true,
-
-    -- Disable rendering in terminal buffers.
-    disable_in_terminal = true,
-
-    -- Disable rendering for files exceeding size limits.
-    disable_in_large_files = true,
 
     -- Optional highlight group whose foreground colour is used as the
     -- bright accent endpoint. Defaults to automatic theme derivation.
@@ -118,6 +103,9 @@ Pass an options table to |setup()|. All fields are optional. >lua
     debug = false,
   })
 <
+
+`recent_days` and `old_days` accept Lua numbers as days or strings like
+`"14"`, `"7d"`, and `"48h"`.
 
 ==============================================================================
 6. COMMANDS                                             *gutter-slime-commands*
@@ -135,10 +123,48 @@ Pass an options table to |setup()|. All fields are optional. >lua
 :GutterSlimeRefresh     Force a fresh blame run and re-render for the current
                         buffer. Useful after external git operations.
 
-                                                       *:GutterSlimeInspect*
+                                                        *:GutterSlimeInspect*
 :GutterSlimeInspect     Print diagnostic information about the current
                         buffer's heatmap state (bucket, timestamp, palette
                         groups, attached windows). Useful for debugging.
+
+                                                       *:GutterSlimeSetCurve*
+:GutterSlimeSetCurve {name}
+                        Set the active age curve. Valid values are `linear`,
+                        `recent`, `old`, and `smooth`.
+
+                                                         *:GutterSlimeSetOld*
+:GutterSlimeSetOld {value}
+                        Set the stale edge of the active age window. Values
+                        accept days or suffixed durations like `48h`.
+
+                                                       *:GutterSlimeSetRange*
+:GutterSlimeSetRange {recent} {old}
+                        Set both active age-window endpoints.
+
+                                                     *:GutterSlimeAdjustOld*
+:GutterSlimeAdjustOld {+/-value}
+                        Move the stale edge of the active age window by the
+                        given duration.
+
+                                                   *:GutterSlimeStepOldNewer*
+:GutterSlimeStepOldNewer
+                        Step the stale edge toward the present.
+
+                                                   *:GutterSlimeStepOldOlder*
+:GutterSlimeStepOldOlder
+                        Step the stale edge farther into history.
+
+                                                        *:GutterSlimeZoomIn*
+:GutterSlimeZoomIn      Alias for stepping the stale edge toward the present.
+
+                                                       *:GutterSlimeZoomOut*
+:GutterSlimeZoomOut     Alias for stepping the stale edge farther into
+                        history.
+
+                                                     *:GutterSlimeResetView*
+:GutterSlimeResetView   Restore the active age window and curve from
+                        |setup()| defaults.
 
 ==============================================================================
 7. HIGHLIGHT GROUPS                                    *gutter-slime-highlights*

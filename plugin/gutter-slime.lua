@@ -23,3 +23,50 @@ vim.api.nvim_create_user_command("GutterSlimeDisable", lazy_cmd("disable"), { de
 vim.api.nvim_create_user_command("GutterSlimeToggle", lazy_cmd("toggle"), { desc = "Toggle gutter-slime" })
 vim.api.nvim_create_user_command("GutterSlimeRefresh", lazy_cmd("refresh"), { desc = "Refresh gutter-slime for current buffer" })
 vim.api.nvim_create_user_command("GutterSlimeInspect", lazy_cmd("inspect"), { desc = "Inspect gutter-slime state for current buffer" })
+vim.api.nvim_create_user_command("GutterSlimeSetCurve", function(opts)
+  require("gutter-slime").set_curve(opts.args)
+end, {
+  nargs = 1,
+  complete = function()
+    return require("gutter-slime.config").curve_names()
+  end,
+  desc = "Set gutter-slime age curve",
+})
+vim.api.nvim_create_user_command("GutterSlimeSetOld", function(opts)
+  require("gutter-slime").set_old(opts.args)
+end, {
+  nargs = 1,
+  desc = "Set gutter-slime old_days window edge",
+})
+vim.api.nvim_create_user_command("GutterSlimeSetRange", function(opts)
+  local args = vim.split(vim.trim(opts.args), "%s+", { trimempty = true })
+  if #args ~= 2 then
+    vim.notify("gutter-slime: GutterSlimeSetRange expects {recent} {old}", vim.log.levels.WARN)
+    return
+  end
+  require("gutter-slime").set_range(args[1], args[2])
+end, {
+  nargs = "+",
+  desc = "Set gutter-slime recent_days and old_days",
+})
+vim.api.nvim_create_user_command("GutterSlimeAdjustOld", function(opts)
+  require("gutter-slime").adjust_old(opts.args)
+end, {
+  nargs = 1,
+  desc = "Adjust gutter-slime old_days by a duration",
+})
+vim.api.nvim_create_user_command("GutterSlimeStepOldNewer", lazy_cmd("step_old_newer"), {
+  desc = "Step gutter-slime old_days toward the present",
+})
+vim.api.nvim_create_user_command("GutterSlimeStepOldOlder", lazy_cmd("step_old_older"), {
+  desc = "Step gutter-slime old_days farther into history",
+})
+vim.api.nvim_create_user_command("GutterSlimeZoomIn", lazy_cmd("zoom_in"), {
+  desc = "Zoom gutter-slime toward recent history",
+})
+vim.api.nvim_create_user_command("GutterSlimeZoomOut", lazy_cmd("zoom_out"), {
+  desc = "Zoom gutter-slime farther into history",
+})
+vim.api.nvim_create_user_command("GutterSlimeResetView", lazy_cmd("reset_view"), {
+  desc = "Reset gutter-slime view to setup defaults",
+})

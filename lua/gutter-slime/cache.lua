@@ -76,6 +76,13 @@ function M.get_timestamp(bufnr, lnum)
   return entry.timestamps[lnum]
 end
 
+---@param bufnr integer
+---@return integer[]|nil
+function M.get_timestamps(bufnr)
+  local entry = _store[bufnr]
+  return entry and entry.timestamps or nil
+end
+
 --- Return cached changedtick for bufnr.
 ---@param bufnr integer
 ---@return integer|nil
