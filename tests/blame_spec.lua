@@ -172,3 +172,35 @@ describe("blame.parse_incremental", function()
     assert.equal(0, result[3].timestamp)
   end)
 end)
+
+describe("blame pathspec and command helpers", function()
+  it("converts absolute paths under the repo to repo-relative pathspecs", function()
+    local path = "/tmp/repo/lua/gutter-slime/init.lua"
+    local root = "/tmp/repo"
+    assert.equal("lua/gutter-slime/init.lua", blame.pathspec_for_repo(path, root))
+  end)
+
+  it("leaves paths outside the repo unchanged", function()
+    local path = "/other/place/file.lua"
+    local root = "/tmp/repo"
+    assert.equal(path, blame.pathspec_for_repo(path, root))
+  end)
+
+  it("builds a clean blame command without --contents", function()
+    local cmd = blame.build_blame_command("lua/gutter-slime/init.lua", false)
+    assert.same({ "git", "blame", "--incremental", "--", "lua/gutter-slime/init.lua" }, cmd)
+  end)
+
+  it("builds a dirty-buffer blame command with --contents -", function()
+    local cmd = blame.build_blame_command("lua/gutter-slime/init.lua", true)
+    assert.same({
+      "git",
+      "blame",
+      "--incremental",
+      "--contents",
+      "-",
+      "--",
+      "lua/gutter-slime/init.lua",
+    }, cmd)
+  end)
+end)

@@ -30,6 +30,51 @@
 local M = {}
 
 local ZERO_SHA = string.rep("0", 40)
+local uv = vim.uv or vim.loop
+
+--- Close a libuv handle defensively.
+---@param handle userdata|nil
+local function safe_close(handle)
+  if not handle then
+    return
+  end
+  if handle.is_closing and handle:is_closing() then
+    return
+  end
+  pcall(function()
+    handle:close()
+  end)
+end
+
+--- Convert an absolute path to a repo-relative git pathspec when possible.
+---@param path string
+---@param repo_root string
+---@return string
+function M.pathspec_for_repo(path, repo_root)
+  local prefix = repo_root
+  if prefix:sub(-1) ~= "/" then
+    prefix = prefix .. "/"
+  end
+  if path:sub(1, #prefix) == prefix then
+    return path:sub(#prefix + 1)
+  end
+  return path
+end
+
+--- Build the git blame command for a given pathspec.
+---@param pathspec string
+---@param dirty boolean
+---@return string[]
+function M.build_blame_command(pathspec, dirty)
+  local cmd = { "git", "blame", "--incremental" }
+  if dirty then
+    table.insert(cmd, "--contents")
+    table.insert(cmd, "-")
+  end
+  table.insert(cmd, "--")
+  table.insert(cmd, pathspec)
+  return cmd
+end
 
 -- ---------------------------------------------------------------------------
 -- Internal helpers
@@ -43,8 +88,8 @@ local ZERO_SHA = string.rep("0", 40)
 ---@param callback fun(code: integer, out: string)
 local function spawn(cmd, cwd, stdin_data, callback)
   local stdout_chunks = {}
-  local stdout = vim.uv.new_pipe(false)
-  local stdin_pipe = stdin_data and vim.uv.new_pipe(false) or nil
+  local stdout = uv.new_pipe(false)
+  local stdin_pipe = stdin_data and uv.new_pipe(false) or nil
 
   local handle
   local opts = {
@@ -53,13 +98,11 @@ local function spawn(cmd, cwd, stdin_data, callback)
     cwd = cwd,
   }
 
-  handle = vim.uv.spawn(cmd[1], opts, function(code)
+  handle = uv.spawn(cmd[1], opts, function(code)
     stdout:read_stop()
-    stdout:close()
-    if stdin_pipe then
-      stdin_pipe:close()
-    end
-    handle:close()
+    safe_close(stdout)
+    safe_close(stdin_pipe)
+    safe_close(handle)
     local out = table.concat(stdout_chunks)
     vim.schedule(function()
       callback(code, out)
@@ -68,10 +111,8 @@ local function spawn(cmd, cwd, stdin_data, callback)
 
   if not handle then
     -- spawn failed (git not found, etc.)
-    stdout:close()
-    if stdin_pipe then
-      stdin_pipe:close()
-    end
+    safe_close(stdout)
+    safe_close(stdin_pipe)
     vim.schedule(function()
       callback(-1, "")
     end)
@@ -87,7 +128,7 @@ local function spawn(cmd, cwd, stdin_data, callback)
   if stdin_pipe and stdin_data then
     stdin_pipe:write(stdin_data, function()
       stdin_pipe:shutdown(function()
-        stdin_pipe:close()
+        safe_close(stdin_pipe)
       end)
     end)
   end
@@ -210,8 +251,9 @@ end
 ---@param repo_root string
 ---@param callback fun(tracked: boolean)
 function M.is_tracked(path, repo_root, callback)
+  local pathspec = M.pathspec_for_repo(path, repo_root)
   spawn(
-    { "git", "ls-files", "--error-unmatch", "--", path },
+    { "git", "ls-files", "--error-unmatch", "--", pathspec },
     repo_root,
     nil,
     function(code, _out)
@@ -234,13 +276,21 @@ end
 ---@param repo_root string|nil  pass nil to let this function detect it
 ---@param dirty boolean         true to feed buffer contents via stdin (Phase 3)
 ---@param request_id integer    used for stale-result rejection
+---@param request_tick integer  vim.b.changedtick captured when request started
 ---@param callback fun(result: table|nil)
-function M.blame_async(bufnr, path, repo_root, dirty, request_id, callback)
+function M.blame_async(bufnr, path, repo_root, dirty, request_id, request_tick, callback)
   local cache = require("gutter-slime.cache")
   local util = require("gutter-slime.util")
 
   local function is_stale()
-    return cache.current_request(bufnr) ~= request_id
+    if cache.current_request(bufnr) ~= request_id then
+      return true
+    end
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      return true
+    end
+    local current_tick = vim.b[bufnr].changedtick or 0
+    return current_tick ~= request_tick
   end
 
   local function run_blame(root)
@@ -256,19 +306,14 @@ function M.blame_async(bufnr, path, repo_root, dirty, request_id, callback)
       return
     end
 
-    local cmd = { "git", "blame", "--incremental" }
+    local pathspec = M.pathspec_for_repo(path, root)
+    local cmd = M.build_blame_command(pathspec, dirty)
 
     local stdin_data = nil
     if dirty then
-      -- Phase 3: pass buffer contents via stdin.
-      table.insert(cmd, "--contents")
-      table.insert(cmd, "-")
       local buf_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
       stdin_data = table.concat(buf_lines, "\n") .. "\n"
     end
-
-    table.insert(cmd, "--")
-    table.insert(cmd, path)
 
     spawn(cmd, root, stdin_data, function(code, out)
       if is_stale() then

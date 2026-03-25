@@ -72,23 +72,29 @@ local function apply_real_blame(bufnr)
   end
 
   local cache = require("gutter-slime.cache")
+  local render = require("gutter-slime.render")
   local req_id = cache.new_request(bufnr)
+  local request_tick = vim.b[bufnr] and vim.b[bufnr].changedtick or 0
+  local dirty = vim.bo[bufnr].modified
 
   require("gutter-slime.blame").blame_async(
     bufnr,
     path,
-    nil,   -- let blame module detect repo root
-    false, -- clean buffer (Phase 2); dirty support lands in Phase 3
+    nil,
+    dirty,
     req_id,
+    request_tick,
     function(result)
-      -- Stale guard: check request_id is still current.
-      if cache.current_request(bufnr) ~= req_id then
+      local current_tick = vim.api.nvim_buf_is_valid(bufnr) and (vim.b[bufnr].changedtick or 0) or -1
+      if cache.current_request(bufnr) ~= req_id or current_tick ~= request_tick then
         log_debug("apply_real_blame: stale result discarded buf=%d req=%d", bufnr, req_id)
         return
       end
 
       if not result then
         log_debug("apply_real_blame: no blame result buf=%d", bufnr)
+        cache.store(bufnr, req_id, request_tick, {}, {})
+        render.clear(bufnr)
         return
       end
 
@@ -100,12 +106,11 @@ local function apply_real_blame(bufnr)
         buckets[i] = ts_to_bucket(entry.timestamp)
       end
 
-      local tick = vim.b[bufnr] and vim.b[bufnr].changedtick or 0
-      local stored = cache.store(bufnr, req_id, tick, buckets, timestamps)
+      local stored = cache.store(bufnr, req_id, request_tick, buckets, timestamps)
       if stored then
         log_debug("apply_real_blame: stored buf=%d lines=%d", bufnr, #buckets)
         if vim.api.nvim_buf_is_valid(bufnr) then
-          require("gutter-slime.render").render(bufnr)
+          render.render(bufnr)
         end
       end
     end

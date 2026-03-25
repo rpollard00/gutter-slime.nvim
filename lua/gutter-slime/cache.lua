@@ -36,6 +36,7 @@ function M.current_request(bufnr)
 end
 
 --- Store blame results for bufnr, but only if request_id matches the outstanding one.
+--- Empty tables are allowed and mean "known no blame data for this request".
 ---@param bufnr integer
 ---@param request_id integer
 ---@param changedtick integer
