@@ -1,115 +1,81 @@
 -- lua/gutter-slime/render.lua
--- statuscolumn-based gutter heatmap renderer.
+-- Sign-column heatmap renderer using extmark sign_hl_group.
 --
--- Design constraints (from the plan):
---   - Only color true buffer lines; skip wrapped screen rows (v:virtnum != 0).
---   - The render function must be constant-time per line: no blame queries,
---     no palette generation, only a cache lookup + string return.
---   - Coexist with line numbers and other statuscolumn content where possible.
+-- Instead of manipulating statuscolumn (which owns the entire gutter), we
+-- place one extmark per buffer line with sign_hl_group pointing at the
+-- appropriate bucket highlight group. This colors only the sign column
+-- background for that line, leaving line numbers and any other statuscolumn
+-- content completely untouched.
 --
--- Integration model (Phase 1 / MVP):
---   When the plugin attaches to a window it prepends its own statuscolumn
---   expression to whatever was already set, storing the original value so it
---   can be restored on detach.
+-- The namespace is shared across all buffers; clearing it per-buffer before
+-- each redraw is O(n lines) but cheap since extmarks are stored in a B-tree.
 
 local M = {}
 local cache = require("gutter-slime.cache")
 local palette = require("gutter-slime.palette")
 
--- winid -> original statuscolumn string (before we touched it)
-local _original_statuscolumn = {}
+local NS = vim.api.nvim_create_namespace("gutter_slime")
 
--- The Lua function expression embedded in statuscolumn.
--- Must be a global (or vim.g / package.loaded path) because statuscolumn is
--- evaluated as a Vimscript expression that can call v:lua functions.
-_G.__gutter_slime_statuscolumn = function()
-  -- v:virtnum ~= 0 means this is a wrapped continuation row; skip it.
-  if vim.v.virtnum ~= 0 then
-    return ""
+-- Sign text: two spaces gives a colored sign cell with no visible glyph.
+-- Using two characters matches the default signcolumn width so it fills
+-- the cell cleanly even when signcolumn=yes:2.
+local SIGN_TEXT = "  "
+
+-- Priority for our signs. Lower than error/warning diagnostics (default 10)
+-- so diagnostic signs win when they overlap, but above 0 so we're visible.
+local SIGN_PRIORITY = 5
+
+--- Draw heatmap extmarks for every line in bufnr.
+--- Clears any previous marks in the namespace first.
+---@param bufnr integer
+function M.render(bufnr)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
   end
 
-  -- In statuscolumn context the expression is evaluated for the window being
-  -- drawn; nvim_get_current_win() returns that window's id.
-  local winid = vim.api.nvim_get_current_win()
-  local bufnr = vim.api.nvim_win_get_buf(winid)
-  local lnum = vim.v.lnum
-  local bucket = cache.get_bucket(bufnr, lnum)
-
-  if bucket == nil then
-    return " "
-  end
+  -- Wipe previous marks for this buffer.
+  vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
 
   local cfg = require("gutter-slime.config").get()
-  if bucket == 0 and not cfg.show_uncommitted then
-    return " "
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+
+  for lnum = 1, line_count do
+    local bucket = cache.get_bucket(bufnr, lnum)
+    if bucket ~= nil then
+      if bucket ~= 0 or cfg.show_uncommitted then
+        local group = palette.group_for_bucket(bucket)
+        -- nvim_buf_set_extmark uses 0-based row indices.
+        vim.api.nvim_buf_set_extmark(bufnr, NS, lnum - 1, 0, {
+          sign_hl_group = group,
+          sign_text = SIGN_TEXT,
+          priority = SIGN_PRIORITY,
+        })
+      end
+    end
   end
 
-  local group = palette.group_for_bucket(bucket)
-  -- Return a highlight-group-wrapped space. Inside %{%...%} we can return
-  -- statuscolumn item strings including %#Hl# tokens. We do NOT use %* here
-  -- because Neovim resets the highlight after each %{%...%} block anyway.
-  return "%#" .. group .. "# "
+  require("gutter-slime.util").debug("render: drew %d lines for buf %d", line_count, bufnr)
 end
 
---- Attach the heatmap renderer to a window.
----@param winid integer
-function M.attach(winid)
-  if _original_statuscolumn[winid] ~= nil then
-    -- Already attached.
-    return
-  end
-
-  local ok, current = pcall(vim.api.nvim_win_get_option, winid, "statuscolumn")
-  if not ok then
-    current = ""
-  end
-
-  _original_statuscolumn[winid] = current or ""
-
-  -- Prepend our cell to whatever was already in statuscolumn.
-  -- %{%...%} forces re-evaluation of the expression per line.
-  local our_expr = "%{%v:lua.__gutter_slime_statuscolumn()%}"
-  local new_sc = our_expr .. (_original_statuscolumn[winid] ~= "" and _original_statuscolumn[winid] or "")
-  vim.api.nvim_win_set_option(winid, "statuscolumn", new_sc)
-
-  require("gutter-slime.util").debug("render: attached to win %d", winid)
-end
-
---- Detach the renderer from a window, restoring the previous statuscolumn.
----@param winid integer
-function M.detach(winid)
-  if _original_statuscolumn[winid] == nil then
-    return
-  end
-
-  if vim.api.nvim_win_is_valid(winid) then
-    pcall(vim.api.nvim_win_set_option, winid, "statuscolumn", _original_statuscolumn[winid])
-  end
-
-  _original_statuscolumn[winid] = nil
-  require("gutter-slime.util").debug("render: detached from win %d", winid)
-end
-
---- Detach from all tracked windows.
-function M.detach_all()
-  for winid, _ in pairs(_original_statuscolumn) do
-    M.detach(winid)
+--- Clear all heatmap extmarks from bufnr.
+---@param bufnr integer
+function M.clear(bufnr)
+  if vim.api.nvim_buf_is_valid(bufnr) then
+    vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
   end
 end
 
---- Force a visual redraw of a window so the statuscolumn re-evaluates.
----@param winid integer
-function M.redraw(winid)
-  if vim.api.nvim_win_is_valid(winid) then
-    vim.cmd("redraw")
+--- Clear heatmap extmarks from all buffers.
+function M.clear_all()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    M.clear(bufnr)
   end
 end
 
---- Return true if a window currently has the renderer attached.
----@param winid integer
----@return boolean
-function M.is_attached(winid)
-  return _original_statuscolumn[winid] ~= nil
+--- Return the namespace id (useful for tests).
+---@return integer
+function M.namespace()
+  return NS
 end
 
 return M

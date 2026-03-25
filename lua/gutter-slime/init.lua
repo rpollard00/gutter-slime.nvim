@@ -103,25 +103,7 @@ local function apply_synthetic_blame(bufnr)
   log_debug("synthetic blame applied: buf=%d lines=%d", bufnr, line_count)
 end
 
---- Attach (or re-attach) the renderer to all windows displaying bufnr.
----@param bufnr integer
-local function attach_windows(bufnr)
-  local render = require("gutter-slime.render")
-  for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-    if not render.is_attached(winid) then
-      render.attach(winid)
-    end
-  end
-end
 
---- Detach renderer from all windows displaying bufnr.
----@param bufnr integer
-local function detach_windows(bufnr)
-  local render = require("gutter-slime.render")
-  for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-    render.detach(winid)
-  end
-end
 
 -- ---------------------------------------------------------------------------
 -- Public API
@@ -168,11 +150,11 @@ function M.enable()
   vim.notify("gutter-slime enabled", vim.log.levels.INFO)
 end
 
---- Disable heatmap rendering globally and detach all windows.
+--- Disable heatmap rendering globally and clear all extmarks.
 function M.disable()
   _enabled = false
   require("gutter-slime.config").current.enabled = false
-  require("gutter-slime.render").detach_all()
+  require("gutter-slime.render").clear_all()
   vim.notify("gutter-slime disabled", vim.log.levels.INFO)
 end
 
@@ -218,15 +200,10 @@ function M.inspect()
     table.insert(lines, "    " .. g)
   end
 
-  -- Show windows attached to this buffer.
-  local render = require("gutter-slime.render")
-  local attached = {}
-  for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-    if render.is_attached(winid) then
-      table.insert(attached, tostring(winid))
-    end
-  end
-  table.insert(lines, string.format("  attached windows: %s", table.concat(attached, ", ")))
+  -- Show extmark count for this buffer.
+  local ns = require("gutter-slime.render").namespace()
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { limit = 0 })
+  table.insert(lines, string.format("  extmarks    : %d", #marks))
 
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end
@@ -260,16 +237,18 @@ function M._refresh_buf(bufnr)
 
   -- Phase 1: use synthetic blame data. Phase 2 will replace this with real git blame.
   apply_synthetic_blame(bufnr)
-  attach_windows(bufnr)
-  vim.cmd("redraw")
+  require("gutter-slime.render").render(bufnr)
 end
 
---- Force a re-render of all windows that are currently attached.
+--- Force a re-render of all eligible buffers.
 function M._redraw_all()
   local render = require("gutter-slime.render")
-  for _, winid in ipairs(vim.api.nvim_list_wins()) do
-    if render.is_attached(winid) then
-      render.redraw(winid)
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) and require("gutter-slime.util").is_eligible_buffer(bufnr) then
+      local buckets = require("gutter-slime.cache").get_buckets(bufnr)
+      if buckets then
+        render.render(bufnr)
+      end
     end
   end
 end

@@ -95,6 +95,9 @@ function M.setup()
     callback = function(ev)
       cancel_timer(ev.buf)
       require("gutter-slime.cache").clear_buf(ev.buf)
+      -- Extmarks are automatically removed when the buffer is unloaded, but
+      -- call clear defensively in case the buffer lingers in a hidden state.
+      require("gutter-slime.render").clear(ev.buf)
     end,
   })
 end
