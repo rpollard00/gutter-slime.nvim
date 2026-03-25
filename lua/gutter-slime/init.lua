@@ -61,49 +61,56 @@ local function ts_to_bucket(ts)
   return math.max(1, math.min(bucket, n))
 end
 
---- Generate synthetic bucket data for a buffer (Phase 1 vertical slice).
---- Assigns buckets in a cycling pattern so every bucket level is visible.
+--- Apply real git blame data for a buffer.
+--- Spawns an async git blame job and stores the results in the cache.
+--- Calls render.render(bufnr) on success.
 ---@param bufnr integer
-local function apply_synthetic_blame(bufnr)
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  local cfg = require("gutter-slime.config").get()
-  local n = cfg.bucket_count
-  local now = os.time()
-
-  local buckets = {}
-  local timestamps = {}
-
-  for i = 1, line_count do
-    -- Cycle through buckets including uncommitted (0) when show_uncommitted.
-    local max_b = cfg.show_uncommitted and n or n
-    local raw = (i - 1) % (max_b + (cfg.show_uncommitted and 1 or 0))
-    local bucket_id
-    local ts
-
-    if cfg.show_uncommitted and raw == 0 then
-      bucket_id = 0
-      ts = 0
-    else
-      local b = cfg.show_uncommitted and raw or (raw + 1)
-      bucket_id = b
-      -- Manufacture a timestamp that would map to this bucket.
-      local pos = (b - 1) / math.max(n - 1, 1)
-      ts = now - math.floor(pos * cfg.old_days * 86400)
-    end
-
-    buckets[i] = bucket_id
-    timestamps[i] = ts
+local function apply_real_blame(bufnr)
+  local path = vim.api.nvim_buf_get_name(bufnr)
+  if path == "" then
+    return
   end
 
   local cache = require("gutter-slime.cache")
   local req_id = cache.new_request(bufnr)
-  local tick = vim.b[bufnr].changedtick or 0
-  cache.store(bufnr, req_id, tick, buckets, timestamps)
 
-  log_debug("synthetic blame applied: buf=%d lines=%d", bufnr, line_count)
+  require("gutter-slime.blame").blame_async(
+    bufnr,
+    path,
+    nil,   -- let blame module detect repo root
+    false, -- clean buffer (Phase 2); dirty support lands in Phase 3
+    req_id,
+    function(result)
+      -- Stale guard: check request_id is still current.
+      if cache.current_request(bufnr) ~= req_id then
+        log_debug("apply_real_blame: stale result discarded buf=%d req=%d", bufnr, req_id)
+        return
+      end
+
+      if not result then
+        log_debug("apply_real_blame: no blame result buf=%d", bufnr)
+        return
+      end
+
+      -- Convert per-line {timestamp, sha} records → buckets + timestamps arrays.
+      local buckets = {}
+      local timestamps = {}
+      for i, entry in ipairs(result) do
+        timestamps[i] = entry.timestamp
+        buckets[i] = ts_to_bucket(entry.timestamp)
+      end
+
+      local tick = vim.b[bufnr] and vim.b[bufnr].changedtick or 0
+      local stored = cache.store(bufnr, req_id, tick, buckets, timestamps)
+      if stored then
+        log_debug("apply_real_blame: stored buf=%d lines=%d", bufnr, #buckets)
+        if vim.api.nvim_buf_is_valid(bufnr) then
+          require("gutter-slime.render").render(bufnr)
+        end
+      end
+    end
+  )
 end
-
-
 
 -- ---------------------------------------------------------------------------
 -- Public API
@@ -235,9 +242,7 @@ function M._refresh_buf(bufnr)
     return
   end
 
-  -- Phase 1: use synthetic blame data. Phase 2 will replace this with real git blame.
-  apply_synthetic_blame(bufnr)
-  require("gutter-slime.render").render(bufnr)
+  apply_real_blame(bufnr)
 end
 
 --- Force a re-render of all eligible buffers.
