@@ -60,6 +60,42 @@ function M.setup()
     end,
   })
 
+  -- Attach the statuscolumn strip whenever a window becomes active.
+  -- BufWinEnter covers new windows; WinEnter covers switching between existing ones.
+  vim.api.nvim_create_autocmd({ "WinEnter" }, {
+    group = augroup_id,
+    desc = "gutter-slime: attach statuscolumn on window enter",
+    callback = function()
+      local gs = require("gutter-slime")
+      if not gs._is_enabled() then
+        return
+      end
+      local winid = vim.api.nvim_get_current_win()
+      local bufnr = vim.api.nvim_win_get_buf(winid)
+      local util = require("gutter-slime.util")
+      if not util.is_eligible_buffer(bufnr) then
+        return
+      end
+      -- Only attach if we have blame data for this buffer already.
+      if require("gutter-slime.cache").get_buckets(bufnr) then
+        require("gutter-slime.render").attach_win(winid)
+      end
+    end,
+  })
+
+  -- Detach the statuscolumn strip when a window is closed.
+  vim.api.nvim_create_autocmd("WinClosed", {
+    group = augroup_id,
+    desc = "gutter-slime: detach statuscolumn on window close",
+    callback = function(ev)
+      -- ev.match is the winid as a string for WinClosed.
+      local winid = tonumber(ev.match)
+      if winid then
+        require("gutter-slime.render").detach_win(winid)
+      end
+    end,
+  })
+
   -- Debounced refresh while typing.
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
     group = augroup_id,
@@ -95,9 +131,8 @@ function M.setup()
     callback = function(ev)
       cancel_timer(ev.buf)
       require("gutter-slime.cache").clear_buf(ev.buf)
-      -- Extmarks are automatically removed when the buffer is unloaded, but
-      -- call clear defensively in case the buffer lingers in a hidden state.
-      require("gutter-slime.render").clear(ev.buf)
+      -- Detach statuscolumn from any windows still showing this buffer.
+      require("gutter-slime.render").clear_buf(ev.buf)
     end,
   })
 end

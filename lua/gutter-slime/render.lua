@@ -1,81 +1,229 @@
 -- lua/gutter-slime/render.lua
--- Sign-column heatmap renderer using extmark sign_hl_group.
+-- Heatmap renderer using statuscolumn (window-local).
 --
--- Instead of manipulating statuscolumn (which owns the entire gutter), we
--- place one extmark per buffer line with sign_hl_group pointing at the
--- appropriate bucket highlight group. This colors only the sign column
--- background for that line, leaving line numbers and any other statuscolumn
--- content completely untouched.
+-- Strategy:
+--   Each eligible window gets a window-local &statuscolumn expression that
+--   appends a single colored cell (one space) at the right edge of the gutter.
+--   The cell background is looked up per-line from the cache — no extmarks are
+--   written; the statuscolumn expression is evaluated by Neovim on every redraw
+--   and calls _stc_line() which does a cache lookup in O(1).
 --
--- The namespace is shared across all buffers; clearing it per-buffer before
--- each redraw is O(n lines) but cheap since extmarks are stored in a B-tree.
+-- Public API:
+--   attach_win(winid)   -- set statuscolumn on window and record it
+--   detach_win(winid)   -- restore previous statuscolumn and unrecord
+--   detach_all()        -- detach every tracked window
+--   refresh_win(winid)  -- force redraw of a single window (calls nvim_win_call)
+--   refresh_buf(bufnr)  -- attach/refresh all windows currently showing bufnr
+--   clear_buf(bufnr)    -- detach all windows currently showing bufnr
+--   clear_all()         -- alias for detach_all()
+--
+-- Internal (called from statuscolumn expression per line):
+--   _stc_line()         -- returns highlight + space string for the current line
 
 local M = {}
+
 local cache = require("gutter-slime.cache")
 local palette = require("gutter-slime.palette")
 
-local NS = vim.api.nvim_create_namespace("gutter_slime")
+-- winid -> { prev_stc = string }
+local _attached = {}
 
--- Sign text: two spaces gives a colored sign cell with no visible glyph.
--- Using two characters matches the default signcolumn width so it fills
--- the cell cleanly even when signcolumn=yes:2.
-local SIGN_TEXT = "  "
+-- The statuscolumn expression.  Neovim evaluates this once per visible line.
+-- %s     = sign column
+-- %=%l   = right-aligned line number (respects relativenumber automatically
+--          because we use %l/%r via the built-in, but we want %{&nu ? ... : ""}
+--          to mirror the default exactly; use %{%...%} for the dynamic part.
+-- The heatmap strip is the last element: a Lua call that returns the colored
+-- cell string.  We use the outer-%{%...%} form so that the returned string is
+-- re-parsed for % items, which lets the function embed %#HlGroup# escapes.
+--
+-- Default Neovim statuscolumn (when &statuscolumn=="") is roughly:
+--   signs | fold | number
+-- We replicate the number portion via %{%v:lua.GutterSlimeNum()%} so the user
+-- keeps relative/absolute number behavior, then append our strip.
+--
+-- Simpler and more robust: preserve the user's existing default by NOT touching
+-- the number/fold columns and ONLY prepending/appending our strip cell.
+-- We build:  <existing default columns>  <our strip>
+--
+-- The user has no third-party statuscolumn plugin, so &statuscolumn is "" when
+-- we attach (Neovim's built-in default).  We reconstruct the default explicitly
+-- so we can append our cell:
+--
+--   %s              sign column
+--   %=%{&nu?(&rnu?v:relnum:v:lnum):""} right-aligned line number
+--   %{%v:lua.require('gutter-slime.render')._stc_line()%}  heatmap cell
+--
+-- Note: %* inside %{%...%} causes rendering artefacts; _stc_line() uses
+-- %## (reset to Normal) instead to terminate the highlight, which is safe
+-- inside re-parsed %{%...%} blocks.
 
--- Priority for our signs. Lower than error/warning diagnostics (default 10)
--- so diagnostic signs win when they overlap, but above 0 so we're visible.
-local SIGN_PRIORITY = 5
+local _STC = "%s%=%{&nu?(&rnu?v:relnum==0?v:lnum:v:relnum:v:lnum):''}"
+  .. " %{%v:lua.require('gutter-slime.render')._stc_line()%}"
 
---- Draw heatmap extmarks for every line in bufnr.
---- Clears any previous marks in the namespace first.
----@param bufnr integer
-function M.render(bufnr)
-  if not vim.api.nvim_buf_is_valid(bufnr) then
+-- ---------------------------------------------------------------------------
+-- Internal: per-line cell renderer (called from statuscolumn expression)
+-- ---------------------------------------------------------------------------
+
+--- Called by the statuscolumn expression once per visible line.
+--- Must be fast: only a table lookup + string concat.
+---@return string  statuscolumn fragment (may contain %#HlGroup# escapes)
+function M._stc_line()
+  -- v:virtnum != 0 → wrapped continuation line; emit blank, no color.
+  if vim.v.virtnum ~= 0 then
+    return " "
+  end
+
+  local winid = vim.api.nvim_get_current_win()
+  local bufnr = vim.api.nvim_win_get_buf(winid)
+  local lnum = vim.v.lnum
+
+  local bucket = cache.get_bucket(bufnr, lnum)
+  if bucket == nil then
+    return " "
+  end
+
+  local cfg = require("gutter-slime.config").get()
+  if bucket == 0 and not cfg.show_uncommitted then
+    return " "
+  end
+
+  local group = palette.group_for_bucket(bucket)
+  -- %#Group# sets the highlight; %## resets to Normal afterward.
+  -- The trailing space is the visible cell content.
+  return "%#" .. group .. "# %##"
+end
+
+-- ---------------------------------------------------------------------------
+-- Window attach / detach
+-- ---------------------------------------------------------------------------
+
+--- Attach the heatmap statuscolumn to a window.
+--- Saves the previous &statuscolumn so it can be restored on detach.
+--- Safe to call multiple times on the same window (idempotent).
+---@param winid integer
+function M.attach_win(winid)
+  if not vim.api.nvim_win_is_valid(winid) then
     return
   end
 
-  -- Wipe previous marks for this buffer.
-  vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
+  if _attached[winid] then
+    -- Already attached; force a redraw to pick up fresh cache data.
+    vim.api.nvim_win_call(winid, function()
+      vim.cmd("redrawstatus")
+    end)
+    return
+  end
 
-  local cfg = require("gutter-slime.config").get()
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  local prev = vim.wo[winid].statuscolumn
+  _attached[winid] = { prev_stc = prev }
+  vim.wo[winid].statuscolumn = _STC
 
-  for lnum = 1, line_count do
-    local bucket = cache.get_bucket(bufnr, lnum)
-    if bucket ~= nil then
-      if bucket ~= 0 or cfg.show_uncommitted then
-        local group = palette.group_for_bucket(bucket)
-        -- nvim_buf_set_extmark uses 0-based row indices.
-        vim.api.nvim_buf_set_extmark(bufnr, NS, lnum - 1, 0, {
-          sign_hl_group = group,
-          sign_text = SIGN_TEXT,
-          priority = SIGN_PRIORITY,
-        })
-      end
+  vim.api.nvim_win_call(winid, function()
+    vim.cmd("redrawstatus")
+  end)
+
+  require("gutter-slime.util").debug("render: attached win=%d", winid)
+end
+
+--- Detach the heatmap statuscolumn from a window and restore its previous value.
+---@param winid integer
+function M.detach_win(winid)
+  local rec = _attached[winid]
+  if not rec then
+    return
+  end
+
+  if vim.api.nvim_win_is_valid(winid) then
+    vim.wo[winid].statuscolumn = rec.prev_stc
+    vim.api.nvim_win_call(winid, function()
+      vim.cmd("redrawstatus")
+    end)
+  end
+
+  _attached[winid] = nil
+  require("gutter-slime.util").debug("render: detached win=%d", winid)
+end
+
+--- Detach the heatmap statuscolumn from every tracked window.
+function M.detach_all()
+  -- Iterate over a copy of keys so we can mutate _attached during the loop.
+  local wins = {}
+  for winid in pairs(_attached) do
+    wins[#wins + 1] = winid
+  end
+  for _, winid in ipairs(wins) do
+    M.detach_win(winid)
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Buffer-level helpers
+-- ---------------------------------------------------------------------------
+
+--- Attach (or refresh) the heatmap on every window currently displaying bufnr.
+---@param bufnr integer
+function M.refresh_buf(bufnr)
+  for _, winid in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(winid) == bufnr then
+      M.attach_win(winid)
     end
   end
-
-  require("gutter-slime.util").debug("render: drew %d lines for buf %d", line_count, bufnr)
 end
 
---- Clear all heatmap extmarks from bufnr.
+--- Detach the heatmap from every window currently displaying bufnr.
+---@param bufnr integer
+function M.clear_buf(bufnr)
+  for _, winid in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(winid) == bufnr then
+      M.detach_win(winid)
+    end
+  end
+  -- Also detach any windows that may now show a different buffer but were
+  -- recorded while showing bufnr (handles buffer-switch-without-close).
+  -- We don't track bufnr per window here, so a full sweep isn't needed —
+  -- the window was already detached above if it still shows bufnr.
+end
+
+--- Alias kept for callers that used the old extmark-based API.
+function M.clear_all()
+  M.detach_all()
+end
+
+--- Force a redraw of a specific window.
+---@param winid integer
+function M.refresh_win(winid)
+  if vim.api.nvim_win_is_valid(winid) then
+    vim.api.nvim_win_call(winid, function()
+      vim.cmd("redrawstatus")
+    end)
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Compat shims for callers that used the old render() / clear() API
+-- ---------------------------------------------------------------------------
+
+--- Old API: render extmarks for bufnr.  Now attaches statuscolumn instead.
+---@param bufnr integer
+function M.render(bufnr)
+  M.refresh_buf(bufnr)
+end
+
+--- Old API: clear extmarks for bufnr.  Now detaches statuscolumn.
 ---@param bufnr integer
 function M.clear(bufnr)
-  if vim.api.nvim_buf_is_valid(bufnr) then
-    vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
-  end
+  M.clear_buf(bufnr)
 end
 
---- Clear heatmap extmarks from all buffers.
-function M.clear_all()
-  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    M.clear(bufnr)
+--- Return the set of currently attached window ids (useful for tests/inspect).
+---@return integer[]
+function M.attached_wins()
+  local wins = {}
+  for winid in pairs(_attached) do
+    wins[#wins + 1] = winid
   end
-end
-
---- Return the namespace id (useful for tests).
----@return integer
-function M.namespace()
-  return NS
+  return wins
 end
 
 return M

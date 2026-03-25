@@ -1,5 +1,5 @@
 -- tests/render_spec.lua
--- Unit tests for render module (extmark-based).
+-- Unit tests for the statuscolumn-based render module.
 
 describe("render", function()
   local render
@@ -15,52 +15,127 @@ describe("render", function()
     require("gutter-slime.palette").build()
   end)
 
-  it("namespace() returns a valid integer", function()
-    local ns = render.namespace()
-    assert.is_number(ns)
-    assert.is_true(ns > 0)
+  after_each(function()
+    -- Always clean up attached windows so state doesn't leak between tests.
+    render.detach_all()
   end)
 
-  it("render() places extmarks for lines with bucket data", function()
-    local bufnr = vim.api.nvim_get_current_buf()
-    local cache = require("gutter-slime.cache")
-    -- Seed cache with 3 lines of bucket data.
-    local rid = cache.new_request(bufnr)
-    cache.store(bufnr, rid, 1, { 1, 2, 3 }, { 100, 200, 300 })
+  -- -------------------------------------------------------------------------
+  -- attach_win / detach_win
+  -- -------------------------------------------------------------------------
 
-    render.render(bufnr)
+  it("attach_win() sets a non-empty statuscolumn on the window", function()
+    local winid = vim.api.nvim_get_current_win()
+    render.attach_win(winid)
 
-    local marks = vim.api.nvim_buf_get_extmarks(bufnr, render.namespace(), 0, -1, {})
-    assert.equals(3, #marks)
-
-    render.clear(bufnr)
+    local stc = vim.wo[winid].statuscolumn
+    assert.is_truthy(stc and stc ~= "")
+    assert.is_truthy(stc:find("gutter%-slime"))
   end)
 
-  it("clear() removes all extmarks for a buffer", function()
-    local bufnr = vim.api.nvim_get_current_buf()
-    local cache = require("gutter-slime.cache")
-    local rid = cache.new_request(bufnr)
-    cache.store(bufnr, rid, 1, { 1, 2 }, { 100, 200 })
+  it("detach_win() restores the previous statuscolumn", function()
+    local winid = vim.api.nvim_get_current_win()
+    local original = vim.wo[winid].statuscolumn
 
-    render.render(bufnr)
-    render.clear(bufnr)
+    render.attach_win(winid)
+    render.detach_win(winid)
 
-    local marks = vim.api.nvim_buf_get_extmarks(bufnr, render.namespace(), 0, -1, {})
-    assert.equals(0, #marks)
+    assert.equals(original, vim.wo[winid].statuscolumn)
   end)
 
-  it("render() is idempotent (second call replaces first)", function()
+  it("attach_win() is idempotent (double attach stays attached once)", function()
+    local winid = vim.api.nvim_get_current_win()
+
+    render.attach_win(winid)
+    local stc_after_first = vim.wo[winid].statuscolumn
+    render.attach_win(winid) -- second call should be a no-op
+    local stc_after_second = vim.wo[winid].statuscolumn
+
+    assert.equals(stc_after_first, stc_after_second)
+    -- Only recorded once.
+    assert.equals(1, #render.attached_wins())
+  end)
+
+  it("attached_wins() returns all attached window ids", function()
+    local winid = vim.api.nvim_get_current_win()
+    assert.equals(0, #render.attached_wins())
+
+    render.attach_win(winid)
+    assert.equals(1, #render.attached_wins())
+    assert.equals(winid, render.attached_wins()[1])
+
+    render.detach_win(winid)
+    assert.equals(0, #render.attached_wins())
+  end)
+
+  it("detach_all() removes statuscolumn from every attached window", function()
+    local winid = vim.api.nvim_get_current_win()
+    render.attach_win(winid)
+    assert.equals(1, #render.attached_wins())
+
+    render.detach_all()
+    assert.equals(0, #render.attached_wins())
+    -- statuscolumn should be restored to empty (default).
+    assert.equals("", vim.wo[winid].statuscolumn)
+  end)
+
+  -- -------------------------------------------------------------------------
+  -- _stc_line()
+  -- -------------------------------------------------------------------------
+
+  it("_stc_line() returns a plain space when v:virtnum != 0", function()
+    -- Simulate a wrapped continuation line.
+    vim.v.virtnum = 1
+    local result = render._stc_line()
+    vim.v.virtnum = 0
+    assert.equals(" ", result)
+  end)
+
+  it("_stc_line() returns a plain space when no cache data exists", function()
+    vim.v.virtnum = 0
+    vim.v.lnum = 1
+    -- Cache is empty — no blame data stored.
+    local result = render._stc_line()
+    assert.equals(" ", result)
+  end)
+
+  it("_stc_line() returns a highlight string when cache has a bucket", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local cache = require("gutter-slime.cache")
     local rid = cache.new_request(bufnr)
-    cache.store(bufnr, rid, 1, { 1, 2, 3 }, { 100, 200, 300 })
+    cache.store(bufnr, rid, 1, { 2 }, { 100 }) -- line 1 = bucket 2
 
-    render.render(bufnr)
-    render.render(bufnr) -- should clear-and-redraw, not double-up
+    vim.v.virtnum = 0
+    vim.v.lnum = 1
+    local result = render._stc_line()
+    -- Should contain a highlight group name and a space.
+    assert.is_truthy(result:find("^%%#GutterSlime"))
+    assert.is_truthy(result:find(" "))
+  end)
 
-    local marks = vim.api.nvim_buf_get_extmarks(bufnr, render.namespace(), 0, -1, {})
-    assert.equals(3, #marks)
+  -- -------------------------------------------------------------------------
+  -- Compat shims
+  -- -------------------------------------------------------------------------
 
-    render.clear(bufnr)
+  it("render() (compat shim) attaches the current window", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local cache = require("gutter-slime.cache")
+    local rid = cache.new_request(bufnr)
+    cache.store(bufnr, rid, 1, { 1 }, { 100 })
+
+    render.render(bufnr) -- old API
+
+    local winid = vim.api.nvim_get_current_win()
+    assert.is_truthy(vim.wo[winid].statuscolumn:find("gutter%-slime"))
+  end)
+
+  it("clear() (compat shim) detaches windows showing bufnr", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local winid = vim.api.nvim_get_current_win()
+    render.attach_win(winid)
+
+    render.clear(bufnr) -- old API
+
+    assert.equals(0, #render.attached_wins())
   end)
 end)

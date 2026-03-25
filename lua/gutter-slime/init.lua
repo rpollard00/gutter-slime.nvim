@@ -110,7 +110,7 @@ local function apply_real_blame(bufnr)
       if stored then
         log_debug("apply_real_blame: stored buf=%d lines=%d", bufnr, #buckets)
         if vim.api.nvim_buf_is_valid(bufnr) then
-          render.render(bufnr)
+          render.refresh_buf(bufnr)
         end
       end
     end
@@ -162,11 +162,11 @@ function M.enable()
   vim.notify("gutter-slime enabled", vim.log.levels.INFO)
 end
 
---- Disable heatmap rendering globally and clear all extmarks.
+--- Disable heatmap rendering globally and detach all windows.
 function M.disable()
   _enabled = false
   require("gutter-slime.config").current.enabled = false
-  require("gutter-slime.render").clear_all()
+  require("gutter-slime.render").detach_all()
   vim.notify("gutter-slime disabled", vim.log.levels.INFO)
 end
 
@@ -212,10 +212,13 @@ function M.inspect()
     table.insert(lines, "    " .. g)
   end
 
-  -- Show extmark count for this buffer.
-  local ns = require("gutter-slime.render").namespace()
-  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { limit = 0 })
-  table.insert(lines, string.format("  extmarks    : %d", #marks))
+  -- Show which windows have the statuscolumn strip attached.
+  local render = require("gutter-slime.render")
+  local attached = render.attached_wins()
+  table.insert(lines, string.format("  attached wins: %d", #attached))
+  for _, wid in ipairs(attached) do
+    table.insert(lines, string.format("    win=%d buf=%d", wid, vim.api.nvim_win_get_buf(wid)))
+  end
 
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end
@@ -250,15 +253,15 @@ function M._refresh_buf(bufnr)
   apply_real_blame(bufnr)
 end
 
---- Force a re-render of all eligible buffers.
+--- Force a re-render of all eligible windows.
 function M._redraw_all()
   local render = require("gutter-slime.render")
-  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(bufnr) and require("gutter-slime.util").is_eligible_buffer(bufnr) then
-      local buckets = require("gutter-slime.cache").get_buckets(bufnr)
-      if buckets then
-        render.render(bufnr)
-      end
+  for _, winid in ipairs(vim.api.nvim_list_wins()) do
+    local bufnr = vim.api.nvim_win_get_buf(winid)
+    if require("gutter-slime.util").is_eligible_buffer(bufnr)
+      and require("gutter-slime.cache").get_buckets(bufnr)
+    then
+      render.attach_win(winid)
     end
   end
 end
