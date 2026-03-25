@@ -6,7 +6,7 @@ Brighter gutter cells indicate recently changed lines. Darker cells indicate old
 
 ## Features
 
-- Per-line git recency heatmap rendered via `statuscolumn`
+- Per-line git recency heatmap rendered via `signcolumn`
 - Theme-aware palette: derives accent and base colours from the active colorscheme
 - Absolute age buckets: consistent visual meaning across all buffers and repos
 - Uncommitted/unsaved line highlighting
@@ -16,7 +16,6 @@ Brighter gutter cells indicate recently changed lines. Darker cells indicate old
 ## Requirements
 
 - Neovim >= 0.10
-- git in PATH
 
 ## Installation
 
@@ -24,17 +23,6 @@ Brighter gutter cells indicate recently changed lines. Darker cells indicate old
 
 ```lua
 {
-  "YOUR_USER/gutter-slime",
-  config = function()
-    require("gutter-slime").setup()
-  end,
-}
-```
-
-**packer.nvim**
-
-```lua
-use {
   "YOUR_USER/gutter-slime",
   config = function()
     require("gutter-slime").setup()
@@ -90,15 +78,11 @@ The plugin defines `GutterSlimeBucket0` through `GutterSlimeBucketN` (where N = 
 vim.api.nvim_set_hl(0, "GutterSlimeBucket0", { bg = "#ff8800" })
 ```
 
-## Coexistence Note
-
-gutter-slime uses `statuscolumn` for rendering. It prepends its cell to whatever `statuscolumn` expression you already have set. Full composability with arbitrary custom `statuscolumn` setups is planned for a future release.
-
 ## Implementation Phases
 
 - **Phase 0** (complete): Project scaffold, config, commands, health check
 - **Phase 1** (complete): Rendering vertical slice with synthetic blame data
-- **Phase 2** (planned): Real async git blame for tracked files
+- **Phase 2** (complete): Real async git blame for tracked files
 - **Phase 3** (planned): Modified buffer and uncommitted line support
 - **Phase 4** (planned): Palette refinement and theme robustness
 - **Phase 5** (planned): Performance and stability hardening
