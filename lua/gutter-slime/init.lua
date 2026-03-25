@@ -72,7 +72,7 @@ local function apply_real_blame(bufnr)
       if not result then
         log_debug("apply_real_blame: no blame result buf=%d", bufnr)
         cache.store(bufnr, req_id, request_tick, {}, {})
-        render.clear(bufnr)
+        render.clear_buf(bufnr)
         return
       end
 

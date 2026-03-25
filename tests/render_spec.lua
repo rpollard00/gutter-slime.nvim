@@ -113,28 +113,24 @@ describe("render", function()
     assert.is_truthy(result:find(" "))
   end)
 
-  -- -------------------------------------------------------------------------
-  -- Compat shims
-  -- -------------------------------------------------------------------------
-
-  it("render() (compat shim) attaches the current window", function()
+  it("refresh_buf() attaches windows showing bufnr", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local cache = require("gutter-slime.cache")
     local rid = cache.new_request(bufnr)
     cache.store(bufnr, rid, 1, { 1 }, { 100 })
 
-    render.render(bufnr) -- old API
+    render.refresh_buf(bufnr)
 
     local winid = vim.api.nvim_get_current_win()
     assert.is_truthy(vim.wo[winid].statuscolumn:find("gutter%-slime"))
   end)
 
-  it("clear() (compat shim) detaches windows showing bufnr", function()
+  it("clear_buf() detaches windows showing bufnr", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local winid = vim.api.nvim_get_current_win()
     render.attach_win(winid)
 
-    render.clear(bufnr) -- old API
+    render.clear_buf(bufnr)
 
     assert.equals(0, #render.attached_wins())
   end)

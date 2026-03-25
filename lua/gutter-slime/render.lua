@@ -110,18 +110,6 @@ function M.clear_buf(bufnr)
   end
 end
 
--- Compatibility shims.
-
----@param bufnr integer
-function M.render(bufnr)
-  M.refresh_buf(bufnr)
-end
-
----@param bufnr integer
-function M.clear(bufnr)
-  M.clear_buf(bufnr)
-end
-
 ---@return integer[]
 function M.attached_wins()
   local wins = {}
