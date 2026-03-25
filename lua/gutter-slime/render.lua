@@ -58,8 +58,12 @@ local _attached = {}
 -- %## (reset to Normal) instead to terminate the highlight, which is safe
 -- inside re-parsed %{%...%} blocks.
 
+-- The trailing " " after the Lua cell restores the implicit right-padding that
+-- Neovim's built-in default gutter provides between the number column and the
+-- buffer text.  A custom &statuscolumn removes that padding, so we add it back
+-- explicitly as a Normal-highlighted space.
 local _STC = "%s%=%{&nu?(&rnu?v:relnum==0?v:lnum:v:relnum:v:lnum):''}"
-  .. " %{%v:lua.require('gutter-slime.render')._stc_line()%}"
+  .. " %{%v:lua.require('gutter-slime.render')._stc_line()%} "
 
 -- ---------------------------------------------------------------------------
 -- Internal: per-line cell renderer (called from statuscolumn expression)
