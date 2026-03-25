@@ -1,13 +1,6 @@
 -- lua/gutter-slime/blame.lua
 -- Async git blame integration.
 --
--- Public surface:
---   blame.find_repo_root(path, callback)           -- cb(root_or_nil)
---   blame.is_tracked(path, repo_root, callback)    -- cb(bool)
---   blame.blame_async(bufnr, path, repo_root,      -- cb(result|nil)
---                     dirty, request_id, callback)
---   blame.parse_incremental(output, line_count)    -- pure, returns line table
---
 -- `git blame --incremental` output format reference:
 --   <40-hex-sha> <orig_line> <final_line> <line_count>
 --   author <name>
@@ -22,17 +15,14 @@
 --   [previous <sha> <filename>]
 --   filename <name>
 --
--- The first header for each SHA block is emitted once; subsequent hunks for
--- the same SHA omit the metadata and jump straight to the next header line.
--- Lines belonging to the initial uncommitted state have the zero SHA
--- (0000000000000000000000000000000000000000).
+-- Repeated hunks for the same SHA may omit metadata, so parse_incremental()
+-- caches metadata by SHA while walking the stream.
 
 local M = {}
 
 local ZERO_SHA = string.rep("0", 40)
 local uv = vim.uv or vim.loop
 
---- Close a libuv handle defensively.
 ---@param handle userdata|nil
 local function safe_close(handle)
   if not handle then
@@ -46,7 +36,7 @@ local function safe_close(handle)
   end)
 end
 
---- Convert an absolute path to a repo-relative git pathspec when possible.
+--- Return a repo-relative pathspec when possible.
 ---@param path string
 ---@param repo_root string
 ---@return string
@@ -61,7 +51,7 @@ function M.pathspec_for_repo(path, repo_root)
   return path
 end
 
---- Build the git blame command for a given pathspec.
+--- Build a git blame command.
 ---@param pathspec string
 ---@param dirty boolean
 ---@return string[]
@@ -80,11 +70,10 @@ end
 -- Internal helpers
 -- ---------------------------------------------------------------------------
 
---- Spawn a one-shot process and collect its stdout.
---- callback(exit_code, stdout_string) is called on vim.schedule.
+--- Spawn a process and collect stdout.
 ---@param cmd string[]
 ---@param cwd string|nil
----@param stdin_data string|nil   pass nil for no stdin
+---@param stdin_data string|nil
 ---@param callback fun(code: integer, out: string)
 local function spawn(cmd, cwd, stdin_data, callback)
   local stdout_chunks = {}
@@ -110,7 +99,6 @@ local function spawn(cmd, cwd, stdin_data, callback)
   end)
 
   if not handle then
-    -- spawn failed (git not found, etc.)
     safe_close(stdout)
     safe_close(stdin_pipe)
     vim.schedule(function()
@@ -135,28 +123,20 @@ local function spawn(cmd, cwd, stdin_data, callback)
 end
 
 -- ---------------------------------------------------------------------------
--- Incremental blame output parser (pure function — easily unit-testable)
+-- Incremental blame output parser
 -- ---------------------------------------------------------------------------
 
---- Parse raw `git blame --incremental` stdout into a per-line result table.
+--- Parse `git blame --incremental` output into per-line records.
 ---
---- Returns a 1-indexed array of length `line_count` where each entry is:
----   { timestamp = integer, sha = string }
---- Uncommitted lines have sha == ZERO_SHA and timestamp == 0.
---- Lines not covered by any hunk (shouldn't happen in well-formed output)
---- are left as { timestamp = 0, sha = ZERO_SHA }.
----
----@param output string   raw stdout from git blame --incremental
----@param line_count integer  expected number of lines in the file
----@return table  array of { timestamp: integer, sha: string }
+---@param output string
+---@param line_count integer
+---@return table
 function M.parse_incremental(output, line_count)
   local result = {}
   for i = 1, line_count do
     result[i] = { timestamp = 0, sha = ZERO_SHA }
   end
 
-  -- Commit metadata cache: sha -> { timestamp }
-  -- We accumulate metadata as we encounter header blocks.
   local meta_cache = {}
 
   local lines = vim.split(output, "\n", { plain = true })
@@ -166,7 +146,6 @@ function M.parse_incremental(output, line_count)
   while i <= total do
     local line = lines[i]
 
-    -- Hunk header: "<sha> <orig_line> <final_line> <line_count>"
     local sha, _orig, final_str, count_str =
       line:match("^([0-9a-f]+)%s+(%d+)%s+(%d+)%s+(%d+)$")
 
@@ -174,21 +153,15 @@ function M.parse_incremental(output, line_count)
       local final_line = tonumber(final_str)
       local hunk_count = tonumber(count_str)
 
-      -- Ensure there's a meta entry for this sha.
       if not meta_cache[sha] then
         meta_cache[sha] = { timestamp = 0 }
       end
 
-      -- Advance past hunk header, collecting metadata lines until we hit
-      -- "filename <name>" which terminates the block.
       i = i + 1
       while i <= total do
         local mline = lines[i]
         local ts = mline:match("^author%-time%s+(%d+)$")
         if ts then
-          -- Only update the cache for this sha if we haven't seen a real
-          -- timestamp yet (first occurrence wins; that's fine since all
-          -- hunks for the same sha share the same author-time).
           if meta_cache[sha].timestamp == 0 then
             meta_cache[sha].timestamp = tonumber(ts) or 0
           end
@@ -200,7 +173,6 @@ function M.parse_incremental(output, line_count)
         i = i + 1
       end
 
-      -- Assign to output lines.
       local ts = meta_cache[sha].timestamp
       local is_uncommitted = sha == ZERO_SHA
       for l = final_line, final_line + hunk_count - 1 do
@@ -223,9 +195,8 @@ end
 -- Public API
 -- ---------------------------------------------------------------------------
 
---- Detect the git repository root for the given absolute file path.
---- Calls callback(root_or_nil) on the main thread.
----@param path string  absolute file path
+--- Detect the git repository root for a path.
+---@param path string
 ---@param callback fun(root: string|nil)
 function M.find_repo_root(path, callback)
   local dir = vim.fn.fnamemodify(path, ":h")
@@ -238,7 +209,6 @@ function M.find_repo_root(path, callback)
         callback(nil)
         return
       end
-      -- Strip trailing newline / whitespace.
       local root = out:match("^(.-)%s*$")
       callback(root ~= "" and root or nil)
     end
@@ -246,8 +216,7 @@ function M.find_repo_root(path, callback)
 end
 
 --- Check whether a file is tracked by git.
---- Calls callback(true) if tracked, callback(false) otherwise.
----@param path string  absolute file path
+---@param path string
 ---@param repo_root string
 ---@param callback fun(tracked: boolean)
 function M.is_tracked(path, repo_root, callback)
@@ -262,21 +231,13 @@ function M.is_tracked(path, repo_root, callback)
   )
 end
 
---- Spawn an async `git blame --incremental` job for a buffer.
----
---- Flow:
----   1. Detect repo root.
----   2. Check file is tracked.
----   3. Run blame, parse output.
----   4. Reject result if request_id is stale.
----   5. Call callback with per-line result table, or nil on any failure.
----
+--- Run async blame for a buffer.
 ---@param bufnr integer
----@param path string  absolute file path
----@param repo_root string|nil  pass nil to let this function detect it
----@param dirty boolean         true to feed buffer contents via stdin (Phase 3)
----@param request_id integer    used for stale-result rejection
----@param request_tick integer  vim.b.changedtick captured when request started
+---@param path string
+---@param repo_root string|nil
+---@param dirty boolean
+---@param request_id integer
+---@param request_tick integer
 ---@param callback fun(result: table|nil)
 function M.blame_async(bufnr, path, repo_root, dirty, request_id, request_tick, callback)
   local cache = require("gutter-slime.cache")
@@ -300,7 +261,6 @@ function M.blame_async(bufnr, path, repo_root, dirty, request_id, request_tick, 
 
     local line_count = vim.api.nvim_buf_line_count(bufnr)
 
-    -- Guard: empty buffer.
     if line_count == 0 then
       callback(nil)
       return
@@ -356,7 +316,6 @@ function M.blame_async(bufnr, path, repo_root, dirty, request_id, request_tick, 
     M.is_tracked(path, root, after_tracked)
   end
 
-  -- If the caller already resolved the repo root, skip detection.
   if repo_root then
     M.is_tracked(path, repo_root, after_tracked)
   else

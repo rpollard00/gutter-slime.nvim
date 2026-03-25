@@ -1,13 +1,12 @@
 -- lua/gutter-slime/autocmds.lua
--- Registers all autocommands that drive heatmap updates.
--- Called once from init.lua after setup().
+-- Autocommands that drive heatmap updates.
 
 local M = {}
 
 local augroup_id = nil
 local debounce_timers = {} -- bufnr -> uv timer
 
---- Cancel any pending debounce timer for a buffer.
+--- Cancel a buffer debounce timer.
 ---@param bufnr integer
 local function cancel_timer(bufnr)
   local t = debounce_timers[bufnr]
@@ -20,7 +19,7 @@ local function cancel_timer(bufnr)
   end
 end
 
---- Schedule a debounced refresh for bufnr.
+--- Schedule a debounced refresh.
 ---@param bufnr integer
 local function debounced_refresh(bufnr)
   local cfg = require("gutter-slime.config").get()
@@ -38,16 +37,14 @@ local function debounced_refresh(bufnr)
   end)
 end
 
---- Create the autocommand group and register all triggers.
+--- Register plugin autocommands.
 function M.setup()
   if augroup_id then
-    -- Already set up; clear and recreate for idempotency.
     vim.api.nvim_del_augroup_by_id(augroup_id)
   end
 
   augroup_id = vim.api.nvim_create_augroup("GutterSlime", { clear = true })
 
-  -- Immediate refresh on buffer/window enter and write.
   vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter", "BufWritePost", "FocusGained" }, {
     group = augroup_id,
     desc = "gutter-slime: trigger refresh",
@@ -60,8 +57,6 @@ function M.setup()
     end,
   })
 
-  -- Attach the statuscolumn strip whenever a window becomes active.
-  -- BufWinEnter covers new windows; WinEnter covers switching between existing ones.
   vim.api.nvim_create_autocmd({ "WinEnter" }, {
     group = augroup_id,
     desc = "gutter-slime: attach statuscolumn on window enter",
@@ -78,7 +73,6 @@ function M.setup()
         render.detach_win(winid)
         return
       end
-      -- Only attach if we have blame data for this buffer already.
       if require("gutter-slime.cache").get_buckets(bufnr) then
         render.attach_win(winid)
       else
@@ -87,12 +81,10 @@ function M.setup()
     end,
   })
 
-  -- Detach the statuscolumn strip when a window is closed.
   vim.api.nvim_create_autocmd("WinClosed", {
     group = augroup_id,
     desc = "gutter-slime: detach statuscolumn on window close",
     callback = function(ev)
-      -- ev.match is the winid as a string for WinClosed.
       local winid = tonumber(ev.match)
       if winid then
         require("gutter-slime.render").detach_win(winid)
@@ -100,7 +92,6 @@ function M.setup()
     end,
   })
 
-  -- Debounced refresh while typing.
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
     group = augroup_id,
     desc = "gutter-slime: debounced refresh on text change",
@@ -113,7 +104,6 @@ function M.setup()
     end,
   })
 
-  -- Palette rebuild on colorscheme change.
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = augroup_id,
     desc = "gutter-slime: rebuild palette on colorscheme change",
@@ -123,25 +113,22 @@ function M.setup()
         return
       end
       require("gutter-slime.palette").build()
-      -- Re-render all windows that have heatmap active.
       gs._redraw_all()
     end,
   })
 
-  -- Cleanup when a buffer is unloaded.
   vim.api.nvim_create_autocmd("BufUnload", {
     group = augroup_id,
     desc = "gutter-slime: clean up buffer state on unload",
     callback = function(ev)
       cancel_timer(ev.buf)
       require("gutter-slime.cache").clear_buf(ev.buf)
-      -- Detach statuscolumn from any windows still showing this buffer.
       require("gutter-slime.render").clear_buf(ev.buf)
     end,
   })
 end
 
---- Tear down all autocommands and outstanding timers.
+--- Tear down autocommands and timers.
 function M.teardown()
   if augroup_id then
     pcall(vim.api.nvim_del_augroup_by_id, augroup_id)

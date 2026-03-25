@@ -1,23 +1,14 @@
 -- lua/gutter-slime/cache.lua
 -- Per-buffer blame state store.
---
--- Schema for a buffer entry:
---   {
---     changedtick  = integer,   -- vim.b.changedtick at time of last successful blame
---     request_id   = integer,   -- monotonically incrementing id to drop stale results
---     buckets      = integer[], -- 1-indexed, bucket id per line (0 = uncommitted)
---     timestamps   = integer[], -- 1-indexed, unix timestamp per line (0 = uncommitted)
---   }
 
 local M = {}
 
----@type table<integer, table>  bufnr -> entry
+---@type table<integer, table>
 local _store = {}
 
 local _next_request_id = 0
 
---- Allocate a fresh request id for bufnr and return it.
---- Callers should pass this id when storing results and check it on arrival.
+--- Allocate a fresh request id.
 ---@param bufnr integer
 ---@return integer
 function M.new_request(bufnr)
@@ -27,7 +18,7 @@ function M.new_request(bufnr)
   return _next_request_id
 end
 
---- Return the current outstanding request id for bufnr (or 0 if none).
+--- Return the current request id.
 ---@param bufnr integer
 ---@return integer
 function M.current_request(bufnr)
@@ -35,8 +26,7 @@ function M.current_request(bufnr)
   return entry and entry.request_id or 0
 end
 
---- Store blame results for bufnr, but only if request_id matches the outstanding one.
---- Empty tables are allowed and mean "known no blame data for this request".
+--- Store blame results if request_id still matches.
 ---@param bufnr integer
 ---@param request_id integer
 ---@param changedtick integer
@@ -54,7 +44,7 @@ function M.store(bufnr, request_id, changedtick, buckets, timestamps)
   return true
 end
 
---- Return the bucket id for line lnum (1-indexed) in bufnr, or nil if no data.
+--- Return the bucket id for a line.
 ---@param bufnr integer
 ---@param lnum integer
 ---@return integer|nil
@@ -66,7 +56,7 @@ function M.get_bucket(bufnr, lnum)
   return entry.buckets[lnum]
 end
 
---- Return the full buckets table for bufnr, or nil if no data.
+--- Return the buckets table for bufnr.
 ---@param bufnr integer
 ---@return integer[]|nil
 function M.get_buckets(bufnr)
@@ -74,7 +64,7 @@ function M.get_buckets(bufnr)
   return entry and entry.buckets or nil
 end
 
---- Return the timestamp for line lnum (1-indexed) in bufnr, or nil.
+--- Return the timestamp for a line.
 ---@param bufnr integer
 ---@param lnum integer
 ---@return integer|nil
@@ -86,7 +76,7 @@ function M.get_timestamp(bufnr, lnum)
   return entry.timestamps[lnum]
 end
 
---- Return cached changedtick for bufnr, or nil.
+--- Return cached changedtick for bufnr.
 ---@param bufnr integer
 ---@return integer|nil
 function M.get_changedtick(bufnr)
@@ -94,18 +84,18 @@ function M.get_changedtick(bufnr)
   return entry and entry.changedtick or nil
 end
 
---- Remove all state for a buffer (called on BufUnload).
+--- Remove buffer state.
 ---@param bufnr integer
 function M.clear_buf(bufnr)
   _store[bufnr] = nil
 end
 
---- Remove all state for all buffers.
+--- Remove all state.
 function M.clear_all()
   _store = {}
 end
 
---- Internal: ensure entry exists for bufnr, return it.
+--- Ensure a buffer entry exists.
 ---@param bufnr integer
 ---@return table
 function M._ensure(bufnr)

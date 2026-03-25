@@ -3,20 +3,18 @@
 
 local M = {}
 
+--- Run health checks.
 function M.check()
-  -- vim.health API (Neovim >= 0.10 unified API)
   local h = vim.health
 
   h.start("gutter-slime")
 
-  -- Neovim version
   if vim.fn.has("nvim-0.10") == 1 then
     h.ok("Neovim >= 0.10 detected")
   else
     h.error("Neovim >= 0.10 is required")
   end
 
-  -- git availability
   local git = vim.fn.exepath("git")
   if git ~= "" then
     local ver = vim.fn.system("git --version 2>&1")
@@ -25,14 +23,12 @@ function M.check()
     h.error("git not found in PATH; blame functionality will not work")
   end
 
-  -- statuscolumn support
   if vim.fn.exists("&statuscolumn") == 1 then
     h.ok("'statuscolumn' option is available")
   else
     h.error("'statuscolumn' option is not available; rendering will not work")
   end
 
-  -- config
   local cfg = require("gutter-slime.config").get()
   if cfg.enabled then
     h.ok("plugin is enabled")
@@ -46,7 +42,6 @@ function M.check()
     h.ok("debug mode is off")
   end
 
-  -- palette
   local palette = require("gutter-slime.palette")
   local groups = palette.group_names()
   if #groups > 0 then

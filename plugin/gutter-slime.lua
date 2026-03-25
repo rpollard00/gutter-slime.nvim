@@ -1,13 +1,12 @@
 -- plugin/gutter-slime.lua
--- Lightweight bootstrap. All heavy lifting is deferred to lua/gutter-slime/.
--- This file intentionally avoids expensive work at startup.
+-- Lightweight bootstrap.
 
 if vim.g.loaded_gutter_slime == 1 then
   return
 end
 vim.g.loaded_gutter_slime = 1
 
--- Require Neovim >= 0.10 (statuscolumn improvements, vim.uv, etc.)
+-- Require Neovim >= 0.10.
 if vim.fn.has("nvim-0.10") == 0 then
   vim.notify("gutter-slime requires Neovim >= 0.10", vim.log.levels.WARN)
   return

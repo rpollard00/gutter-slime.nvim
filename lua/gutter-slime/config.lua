@@ -28,7 +28,7 @@ M.defaults = {
 ---@type GutterSlimeConfig
 M.current = vim.deepcopy(M.defaults)
 
---- Merge user-supplied options into the active config, validating key types.
+--- Merge user options into the active config.
 ---@param opts table|nil
 function M.setup(opts)
   if opts == nil then
@@ -43,7 +43,6 @@ function M.setup(opts)
 
   M.current = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
 
-  -- Validate a handful of important fields.
   if type(M.current.debounce_ms) ~= "number" or M.current.debounce_ms < 0 then
     vim.notify("gutter-slime: debounce_ms must be a non-negative number; using default", vim.log.levels.WARN)
     M.current.debounce_ms = M.defaults.debounce_ms
@@ -60,7 +59,7 @@ function M.setup(opts)
   end
 end
 
---- Return the active configuration (read-only copy for callers that need safety).
+--- Return the active config.
 ---@return GutterSlimeConfig
 function M.get()
   return M.current

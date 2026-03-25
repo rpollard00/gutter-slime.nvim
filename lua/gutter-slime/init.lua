@@ -1,18 +1,5 @@
 -- lua/gutter-slime/init.lua
 -- Public API and orchestration layer.
---
--- Public surface:
---   require("gutter-slime").setup(opts)
---   require("gutter-slime").enable()
---   require("gutter-slime").disable()
---   require("gutter-slime").toggle()
---   require("gutter-slime").refresh()
---   require("gutter-slime").inspect()
---
--- Internal surface (called by autocmds, commands, render):
---   _is_enabled()
---   _refresh_buf(bufnr)
---   _redraw_all()
 
 local M = {}
 
@@ -27,9 +14,7 @@ local function log_debug(msg, ...)
   require("gutter-slime.util").debug(msg, ...)
 end
 
---- Convert an absolute Unix timestamp to a bucket index 1..bucket_count.
---- Returns 0 for uncommitted lines (timestamp == 0).
----@param ts integer  Unix timestamp (0 = uncommitted)
+---@param ts integer
 ---@return integer
 local function ts_to_bucket(ts)
   if ts == 0 then
@@ -47,23 +32,16 @@ local function ts_to_bucket(ts)
   local n = cfg.bucket_count
   local old_days = cfg.old_days
 
-  -- Clamp ancient history into the last bucket.
   if age_days >= old_days then
     return n
   end
 
-  -- Map [0, old_days) linearly into [1, n], then we'll sort by recency.
-  -- We invert so bucket 1 = freshest, bucket n = oldest.
-  -- pos: 0 (fresh) → 1 (old)
   local pos = age_days / old_days
-  -- Map pos → bucket such that bucket 1 corresponds to smallest pos.
   local bucket = math.floor(pos * (n - 1)) + 1
   return math.max(1, math.min(bucket, n))
 end
 
---- Apply real git blame data for a buffer.
---- Spawns an async git blame job and stores the results in the cache.
---- Calls render.render(bufnr) on success.
+--- Fetch and apply git blame data for a buffer.
 ---@param bufnr integer
 local function apply_real_blame(bufnr)
   local path = vim.api.nvim_buf_get_name(bufnr)
@@ -98,7 +76,6 @@ local function apply_real_blame(bufnr)
         return
       end
 
-      -- Convert per-line {timestamp, sha} records → buckets + timestamps arrays.
       local buckets = {}
       local timestamps = {}
       for i, entry in ipairs(result) do
@@ -121,7 +98,6 @@ end
 -- Public API
 -- ---------------------------------------------------------------------------
 
---- Primary setup entry point. Call once from your config.
 ---@param opts table|nil
 function M.setup(opts)
   require("gutter-slime.config").setup(opts)
@@ -131,7 +107,6 @@ function M.setup(opts)
     require("gutter-slime.autocmds").setup()
     _initialized = true
   else
-    -- Re-setup: rebuild palette with potentially new config.
     require("gutter-slime.palette").build()
   end
 
@@ -140,7 +115,6 @@ function M.setup(opts)
 
   if _enabled then
     log_debug("setup complete (enabled)")
-    -- Refresh the current buffer immediately if we're in a window.
     local bufnr = vim.api.nvim_get_current_buf()
     M._refresh_buf(bufnr)
   else
@@ -148,7 +122,7 @@ function M.setup(opts)
   end
 end
 
---- Enable heatmap rendering globally.
+--- Enable rendering.
 function M.enable()
   _enabled = true
   require("gutter-slime.config").current.enabled = true
@@ -162,7 +136,7 @@ function M.enable()
   vim.notify("gutter-slime enabled", vim.log.levels.INFO)
 end
 
---- Disable heatmap rendering globally and detach all windows.
+--- Disable rendering.
 function M.disable()
   _enabled = false
   require("gutter-slime.config").current.enabled = false
@@ -170,7 +144,7 @@ function M.disable()
   vim.notify("gutter-slime disabled", vim.log.levels.INFO)
 end
 
---- Toggle heatmap rendering.
+--- Toggle rendering.
 function M.toggle()
   if _enabled then
     M.disable()
@@ -179,14 +153,14 @@ function M.toggle()
   end
 end
 
---- Force a fresh refresh of the current buffer.
+--- Refresh the current buffer.
 function M.refresh()
   local bufnr = vim.api.nvim_get_current_buf()
   require("gutter-slime.cache").clear_buf(bufnr)
   M._refresh_buf(bufnr)
 end
 
---- Print diagnostic information about the current buffer's state.
+--- Print diagnostic state for the current buffer.
 function M.inspect()
   local bufnr = vim.api.nvim_get_current_buf()
   local cache = require("gutter-slime.cache")
@@ -212,7 +186,6 @@ function M.inspect()
     table.insert(lines, "    " .. g)
   end
 
-  -- Show which windows have the statuscolumn strip attached.
   local render = require("gutter-slime.render")
   local attached = render.attached_wins()
   table.insert(lines, string.format("  attached wins: %d", #attached))
@@ -227,13 +200,12 @@ end
 -- Internal surface
 -- ---------------------------------------------------------------------------
 
---- Check whether the plugin is globally enabled.
 ---@return boolean
 function M._is_enabled()
   return _enabled
 end
 
---- Refresh heatmap data for a single buffer and (re-)attach windows.
+--- Refresh a buffer.
 ---@param bufnr integer
 function M._refresh_buf(bufnr)
   if not _enabled then
@@ -254,7 +226,7 @@ function M._refresh_buf(bufnr)
   apply_real_blame(bufnr)
 end
 
---- Force a re-render of all eligible windows.
+--- Redraw all eligible windows.
 function M._redraw_all()
   local render = require("gutter-slime.render")
   for _, winid in ipairs(vim.api.nvim_list_wins()) do
