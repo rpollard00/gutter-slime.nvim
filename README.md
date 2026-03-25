@@ -41,6 +41,16 @@ require("gutter-slime").setup()
 
 Run `:checkhealth gutter-slime` to verify the environment.
 
+## Development
+
+The tests use Plenary's busted runner.
+
+- Install `plenary.nvim` somewhere on your runtime path, or let the default `lazy.nvim` path work.
+- Run `make test` from the repo root.
+- If Plenary is installed elsewhere, run `make test PLENARY_DIR=/path/to/plenary.nvim`.
+
+The default `PLENARY_DIR` is `~/.local/share/nvim/lazy/plenary.nvim`.
+
 ## Configuration
 
 ```lua
