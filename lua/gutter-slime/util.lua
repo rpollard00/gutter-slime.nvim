@@ -15,22 +15,6 @@ function M.debug(msg, ...)
   vim.notify("[gutter-slime] " .. formatted, vim.log.levels.DEBUG)
 end
 
---- Log a warning.
----@param msg string
----@param ... any
-function M.warn(msg, ...)
-  local formatted = select("#", ...) > 0 and string.format(msg, ...) or msg
-  vim.notify("[gutter-slime] " .. formatted, vim.log.levels.WARN)
-end
-
---- Log an error.
----@param msg string
----@param ... any
-function M.err(msg, ...)
-  local formatted = select("#", ...) > 0 and string.format(msg, ...) or msg
-  vim.notify("[gutter-slime] " .. formatted, vim.log.levels.ERROR)
-end
-
 --- Check whether a buffer should be rendered.
 ---@param bufnr integer
 ---@return boolean

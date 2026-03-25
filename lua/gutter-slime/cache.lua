@@ -90,11 +90,6 @@ function M.clear_buf(bufnr)
   _store[bufnr] = nil
 end
 
---- Remove all state.
-function M.clear_all()
-  _store = {}
-end
-
 --- Ensure a buffer entry exists.
 ---@param bufnr integer
 ---@return table

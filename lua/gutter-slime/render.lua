@@ -110,20 +110,6 @@ function M.clear_buf(bufnr)
   end
 end
 
-function M.clear_all()
-  M.detach_all()
-end
-
---- Redraw a window.
----@param winid integer
-function M.refresh_win(winid)
-  if vim.api.nvim_win_is_valid(winid) then
-    vim.api.nvim_win_call(winid, function()
-      vim.cmd("redrawstatus")
-    end)
-  end
-end
-
 -- Compatibility shims.
 
 ---@param bufnr integer

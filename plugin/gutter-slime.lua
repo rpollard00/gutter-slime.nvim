@@ -1,5 +1,4 @@
 -- plugin/gutter-slime.lua
--- Lightweight bootstrap.
 
 if vim.g.loaded_gutter_slime == 1 then
   return
