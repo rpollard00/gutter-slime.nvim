@@ -52,24 +52,30 @@ function M.is_eligible_buffer(bufnr)
   local cfg = require("gutter-slime.config").get()
 
   -- Only normal file buffers (buftype == "") are eligible.
-  -- Special cases: terminal, quickfix, nofile, prompt, etc. are all excluded.
   local buftype = vim.bo[bufnr].buftype
   if buftype ~= "" then
     return false
   end
 
+  -- Exclude URI-scheme buffers (oil://, fugitive://, etc.). These have
+  -- buftype="" but their name contains a scheme and are not real files.
+  local name = vim.api.nvim_buf_get_name(bufnr)
+  if name:find("^%a[%a%d+%-%.]*://") then
+    return false
+  end
+
+  -- Unnamed/scratch buffers have nothing to blame.
+  if name == "" then
+    return false
+  end
+
   if cfg.disable_in_diff then
-    -- vim.wo uses the current window; check all windows showing this buffer.
     for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
       if vim.wo[winid].diff then
         return false
       end
     end
   end
-
-  -- Allow buffers whose filetype hasn't been detected yet (e.g. on BufEnter
-  -- before FileType fires). The filetype check is intentionally omitted here;
-  -- callers may re-check after FileType if needed.
 
   return true
 end

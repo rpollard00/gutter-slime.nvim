@@ -116,17 +116,23 @@ function M.build()
   -- Committed buckets 1..n: bucket 1 is freshest (most accent), bucket n is
   -- oldest (closest to base_bg).
   --
-  -- The blend fraction follows an exponential decay so recent buckets stay
-  -- vivid and old buckets collapse quickly toward the base.
+  -- The blend fraction uses an exponential curve driven purely by the
+  -- normalised bucket position [0, 1]. We span a fixed number of half-lives
+  -- across the full bucket range so the curve is always visually spread out
+  -- regardless of the actual day values in config.
+  --
+  -- HALF_LIVES_ACROSS_RANGE controls how steeply brightness falls off.
+  -- 2.5 half-lives means bucket n has ~18% of bucket 1's blend value —
+  -- visible but clearly dimmer. Increase for a steeper drop-off.
+  local HALF_LIVES_ACROSS_RANGE = 2.5
+  local max_t = dark and 0.50 or 0.40 -- blend fraction for bucket 1 (freshest)
+
   for i = 1, n do
-    -- Normalised position 0 (freshest) to 1 (oldest).
+    -- Normalised position: 0 = freshest (bucket 1), 1 = oldest (bucket n).
     local pos = (i - 1) / math.max(n - 1, 1)
-    -- Exponential: t goes from high blend → low blend.
-    local half_life = cfg.half_life_days
-    local total_days = cfg.old_days
-    local decay = math.exp(-math.log(2) * (pos * total_days) / half_life)
-    -- Map decay [0,1] → blend fraction: decay=1 → brightest, decay→0 → base.
-    local t = decay * (dark and 0.45 or 0.35)
+    -- Exponential decay across the bucket range.
+    local decay = math.exp(-math.log(2) * pos * HALF_LIVES_ACROSS_RANGE)
+    local t = decay * max_t
     local bucket_bg = util.blend_hex(base_bg, accent, t)
     local group = GROUP_PREFIX .. i
     vim.api.nvim_set_hl(0, group, { bg = bucket_bg })
