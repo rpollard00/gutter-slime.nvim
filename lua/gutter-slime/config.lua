@@ -7,16 +7,9 @@ local M = {}
 ---@field enabled boolean
 ---@field debounce_ms integer
 ---@field bucket_count integer
----@field recent_days number
 ---@field old_days number
----@field curve "exp"|"linear"|"logistic"
----@field half_life_days number
 ---@field show_uncommitted boolean
----@field max_file_lines integer
----@field max_file_bytes integer
 ---@field disable_in_diff boolean
----@field disable_in_terminal boolean
----@field disable_in_large_files boolean
 ---@field accent_hl string|nil
 ---@field debug boolean
 
@@ -25,24 +18,15 @@ M.defaults = {
   enabled = true,
   debounce_ms = 150,
   bucket_count = 7,
-  recent_days = 7,
   old_days = 180,
-  curve = "exp",
-  half_life_days = 3,
   show_uncommitted = true,
-  max_file_lines = 20000,
-  max_file_bytes = 1024 * 1024,
   disable_in_diff = true,
-  disable_in_terminal = true,
-  disable_in_large_files = true,
   accent_hl = nil,
   debug = false,
 }
 
 ---@type GutterSlimeConfig
 M.current = vim.deepcopy(M.defaults)
-
-local VALID_CURVES = { exp = true, linear = true, logistic = true }
 
 --- Merge user-supplied options into the active config, validating key types.
 ---@param opts table|nil
@@ -65,17 +49,14 @@ function M.setup(opts)
     M.current.debounce_ms = M.defaults.debounce_ms
   end
 
-  if not VALID_CURVES[M.current.curve] then
-    vim.notify(
-      string.format("gutter-slime: unknown curve %q; using 'exp'", tostring(M.current.curve)),
-      vim.log.levels.WARN
-    )
-    M.current.curve = "exp"
-  end
-
   if type(M.current.bucket_count) ~= "number" or M.current.bucket_count < 2 then
     vim.notify("gutter-slime: bucket_count must be >= 2; using default", vim.log.levels.WARN)
     M.current.bucket_count = M.defaults.bucket_count
+  end
+
+  if type(M.current.old_days) ~= "number" or M.current.old_days <= 0 then
+    vim.notify("gutter-slime: old_days must be > 0; using default", vim.log.levels.WARN)
+    M.current.old_days = M.defaults.old_days
   end
 end
 

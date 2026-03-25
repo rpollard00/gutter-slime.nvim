@@ -246,6 +246,7 @@ function M._refresh_buf(bufnr)
 
   local util = require("gutter-slime.util")
   if not util.is_eligible_buffer(bufnr) then
+    require("gutter-slime.render").clear_buf(bufnr)
     log_debug("_refresh_buf: buf=%d ineligible, skipping", bufnr)
     return
   end
@@ -262,6 +263,8 @@ function M._redraw_all()
       and require("gutter-slime.cache").get_buckets(bufnr)
     then
       render.attach_win(winid)
+    else
+      render.detach_win(winid)
     end
   end
 end

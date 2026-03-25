@@ -21,6 +21,10 @@ describe("bucket mapping", function()
     gs = require("gutter-slime")
   end)
 
+  after_each(function()
+    require("gutter-slime.render").detach_all()
+  end)
+
   it("setup() runs without errors", function()
     assert.has_no.errors(function()
       gs.setup({ enabled = false })
@@ -32,16 +36,15 @@ describe("bucket mapping", function()
     local cfg = require("gutter-slime.config").get()
     assert.equals(300, cfg.debounce_ms)
     assert.is_true(cfg.debug)
-    assert.equals("exp", cfg.curve) -- default preserved
+    assert.equals(180, cfg.old_days) -- default preserved
   end)
 
-  it("config rejects invalid curve", function()
-    -- Should fall back to 'exp' and emit a warning (not an error).
+  it("config rejects invalid old_days", function()
     assert.has_no.errors(function()
-      gs.setup({ curve = "banana" })
+      gs.setup({ old_days = 0 })
     end)
     local cfg = require("gutter-slime.config").get()
-    assert.equals("exp", cfg.curve)
+    assert.equals(180, cfg.old_days)
   end)
 
   it("config rejects bucket_count < 2", function()
@@ -50,5 +53,21 @@ describe("bucket mapping", function()
     end)
     local cfg = require("gutter-slime.config").get()
     assert.equals(7, cfg.bucket_count) -- default
+  end)
+
+  it("_refresh_buf() detaches the strip for ineligible buffers", function()
+    gs.setup({ enabled = true })
+
+    local winid = vim.api.nvim_get_current_win()
+    local render = require("gutter-slime.render")
+    render.attach_win(winid)
+    assert.equals(1, #render.attached_wins())
+
+    local bufnr = vim.api.nvim_get_current_buf()
+    vim.bo[bufnr].buftype = "nofile"
+
+    gs._refresh_buf(bufnr)
+
+    assert.equals(0, #render.attached_wins())
   end)
 end)

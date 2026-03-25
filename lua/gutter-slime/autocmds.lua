@@ -66,6 +66,7 @@ function M.setup()
     group = augroup_id,
     desc = "gutter-slime: attach statuscolumn on window enter",
     callback = function()
+      local render = require("gutter-slime.render")
       local gs = require("gutter-slime")
       if not gs._is_enabled() then
         return
@@ -74,11 +75,14 @@ function M.setup()
       local bufnr = vim.api.nvim_win_get_buf(winid)
       local util = require("gutter-slime.util")
       if not util.is_eligible_buffer(bufnr) then
+        render.detach_win(winid)
         return
       end
       -- Only attach if we have blame data for this buffer already.
       if require("gutter-slime.cache").get_buckets(bufnr) then
-        require("gutter-slime.render").attach_win(winid)
+        render.attach_win(winid)
+      else
+        render.detach_win(winid)
       end
     end,
   })
