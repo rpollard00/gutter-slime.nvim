@@ -43,10 +43,10 @@ local function apply_curve(pos, curve)
     return pos
   end
   if curve == "recent" then
-    return pos ^ 1.6
+    return math.sqrt(pos)
   end
   if curve == "old" then
-    return pos ^ 0.625
+    return pos ^ 1.6
   end
   if curve == "smooth" then
     return pos * pos * (3 - 2 * pos)

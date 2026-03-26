@@ -131,7 +131,7 @@ describe("bucket mapping", function()
     gs.setup({ enabled = false, bucket_count = 7, recent_days = 0, old_days = "48h", curve = "recent" })
     local recent_bucket = gs._ts_to_bucket(now - 18 * 60 * 60)
 
-    assert.is_true(recent_bucket <= linear_bucket)
+    assert.is_true(recent_bucket >= linear_bucket)
   end)
 
   it("old curve gives more detail to stale edits than linear", function()
@@ -143,7 +143,19 @@ describe("bucket mapping", function()
     gs.setup({ enabled = false, bucket_count = 7, recent_days = 0, old_days = "48h", curve = "old" })
     local old_bucket = gs._ts_to_bucket(now - 18 * 60 * 60)
 
-    assert.is_true(old_bucket >= linear_bucket)
+    assert.is_true(old_bucket <= linear_bucket)
+  end)
+
+  it("default recent curve gives more midpoint separation across the first 60 days", function()
+    local now = os.time()
+
+    gs.setup({ enabled = false, bucket_count = 7, recent_days = 0, old_days = 180, curve = "recent" })
+
+    assert.equals(1, gs._ts_to_bucket(now - 1 * 86400))
+    assert.equals(2, gs._ts_to_bucket(now - 7 * 86400))
+    assert.equals(2, gs._ts_to_bucket(now - 14 * 86400))
+    assert.equals(3, gs._ts_to_bucket(now - 30 * 86400))
+    assert.equals(4, gs._ts_to_bucket(now - 60 * 86400))
   end)
 
   it("_refresh_buf() detaches the strip for ineligible buffers", function()
@@ -219,10 +231,10 @@ describe("bucket mapping", function()
     cache.store(bufnr, rid, 1, { 1, 4 }, { now - 60 * 60, now - 24 * 60 * 60 })
     render.attach_win(winid)
 
-    assert.is_true(gs.set_curve("old"))
+    assert.is_true(gs.set_curve("recent"))
 
     assert.equals(1, cache.get_bucket(bufnr, 1))
-    assert.is_true(cache.get_bucket(bufnr, 2) >= 4)
+    assert.is_true(cache.get_bucket(bufnr, 2) > 4)
     assert.equals(1, #render.attached_wins())
   end)
 end)
