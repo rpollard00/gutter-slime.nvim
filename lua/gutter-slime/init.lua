@@ -165,6 +165,26 @@ local function apply_view_patch(patch, ok_msg)
   return true
 end
 
+---@param style string
+---@param ok_msg string|nil
+---@return boolean
+local function apply_gradient_style(style, ok_msg)
+  local ok, err = require("gutter-slime.config").update_gradient_style(style)
+  if not ok then
+    vim.notify("gutter-slime: " .. err, vim.log.levels.WARN)
+    return false
+  end
+
+  require("gutter-slime.palette").build()
+  if _enabled then
+    M._redraw_all()
+  end
+  if ok_msg then
+    vim.notify(ok_msg, vim.log.levels.INFO)
+  end
+  return true
+end
+
 ---@param bufnr integer
 local function apply_real_blame(bufnr)
   local path = vim.api.nvim_buf_get_name(bufnr)
@@ -365,6 +385,12 @@ function M.reset_view()
   return true
 end
 
+---@param style string
+---@return boolean
+function M.set_gradient_style(style)
+  return apply_gradient_style(style, string.format("gutter-slime gradient: %s", style))
+end
+
 function M.inspect()
   local bufnr = vim.api.nvim_get_current_buf()
   local cache = require("gutter-slime.cache")
@@ -388,8 +414,14 @@ function M.inspect()
   }
 
   local palette = require("gutter-slime.palette")
+  local palette_desc = palette.describe()
   local groups = palette.group_names()
   table.insert(lines, string.format("  palette     : %d groups", #groups))
+  if palette_desc then
+    table.insert(lines, string.format("  gradient    : %s", palette_desc.style))
+    table.insert(lines, string.format("  base bg     : %s", palette_desc.base_bg))
+    table.insert(lines, string.format("  accent      : %s", palette_desc.accent))
+  end
   for _, g in ipairs(groups) do
     table.insert(lines, "    " .. g)
   end

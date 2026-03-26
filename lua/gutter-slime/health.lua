@@ -37,6 +37,7 @@ function M.check()
   end
 
   h.ok(string.format("view window: recent_days=%.3f old_days=%.3f curve=%s", cfg.recent_days, cfg.old_days, cfg.curve))
+  h.ok(string.format("gradient style: %s", cfg.gradient.style))
 
   if cfg.debug then
     h.warn("debug mode is active; extra notifications will appear")

@@ -111,6 +111,60 @@ function M.blend_hex(a, b, t)
   )
 end
 
+--- Normalize a hex color string.
+---@param hex string
+---@return string|nil
+function M.normalize_hex(hex)
+  if type(hex) ~= "string" then
+    return nil
+  end
+
+  local trimmed = vim.trim(hex)
+  local short = trimmed:match("^#?(%x%x%x)$")
+  if short then
+    local r = short:sub(1, 1)
+    local g = short:sub(2, 2)
+    local b = short:sub(3, 3)
+    return string.format("#%s%s%s%s%s%s", r, r, g, g, b, b):lower()
+  end
+
+  local full = trimmed:match("^#?(%x%x%x%x%x%x)$")
+  if full then
+    return ("#" .. full):lower()
+  end
+
+  return nil
+end
+
+--- Check whether a value is a valid hex color.
+---@param hex any
+---@return boolean
+function M.is_hex_color(hex)
+  return M.normalize_hex(hex) ~= nil
+end
+
+--- Sample a multi-stop gradient at position t.
+---@param stops string[]
+---@param t number
+---@return string
+function M.sample_hex_gradient(stops, t)
+  if #stops == 0 then
+    return "#000000"
+  end
+  if #stops == 1 then
+    return stops[1]
+  end
+
+  local pos = M.clamp(t, 0, 1) * (#stops - 1)
+  local idx = math.floor(pos) + 1
+  if idx >= #stops then
+    return stops[#stops]
+  end
+
+  local local_t = pos - math.floor(pos)
+  return M.blend_hex(stops[idx], stops[idx + 1], local_t)
+end
+
 --- Get a highlight color.
 ---@param group string
 ---@param attr "fg"|"bg"

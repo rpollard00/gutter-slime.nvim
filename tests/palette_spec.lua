@@ -3,14 +3,16 @@
 
 describe("palette", function()
   local palette
+  local config
 
   before_each(function()
     package.loaded["gutter-slime.palette"] = nil
     package.loaded["gutter-slime.config"] = nil
     package.loaded["gutter-slime.util"] = nil
     palette = require("gutter-slime.palette")
+    config = require("gutter-slime.config")
     -- Set up minimal config defaults before tests.
-    require("gutter-slime.config").setup()
+    config.setup()
   end)
 
   it("group_names() is empty before build()", function()
@@ -44,8 +46,108 @@ describe("palette", function()
 
   it("group_for_bucket clamps to bucket_count", function()
     palette.build()
-    local cfg = require("gutter-slime.config").get()
+    local cfg = config.get()
     local g = palette.group_for_bucket(cfg.bucket_count + 100)
     assert.equals("GutterSlimeBucket" .. cfg.bucket_count, g)
+  end)
+
+  it("defaults to monotone gradient style", function()
+    local desc = palette.describe()
+    assert.equals("monotone", desc.style)
+    assert.equals(3, #desc.committed_stops)
+  end)
+
+  it("supports vibrant, muted, slime, rainbow, and thermal preset styles", function()
+    for _, style in ipairs({ "vibrant", "muted", "slime", "rainbow", "thermal" }) do
+      config.setup({ gradient = { style = style } })
+      local desc = palette.describe()
+      assert.equals(style, desc.style)
+      assert.is_true(#desc.committed_stops > 0)
+      assert.is_truthy(desc.uncommitted:match("^#%x%x%x%x%x%x$"))
+    end
+  end)
+
+  it("rainbow preset exposes multiple distinct stops", function()
+    config.setup({ gradient = { style = "rainbow" } })
+    local desc = palette.describe()
+    assert.is_true(#desc.committed_stops >= 6)
+    assert.not_equals(desc.committed_stops[1], desc.committed_stops[#desc.committed_stops])
+  end)
+
+  it("rainbow preset ramps luminosity toward fresher buckets", function()
+    config.setup({ gradient = { style = "rainbow" } })
+    local desc = palette.describe()
+
+    local function luminance(hex)
+      local r, g, b = require("gutter-slime.util").hex_to_rgb(hex)
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    end
+
+    assert.is_true(luminance(desc.committed_stops[1]) < luminance(desc.committed_stops[#desc.committed_stops]))
+  end)
+
+  it("thermal preset runs blue to white without green midpoints", function()
+    config.setup({ gradient = { style = "thermal" } })
+    local desc = palette.describe()
+
+    assert.is_true(#desc.committed_stops >= 7)
+    assert.is_truthy(desc.accent:match("^#%x%x%x%x%x%x$"))
+    local r, g, b = require("gutter-slime.util").hex_to_rgb(desc.accent)
+    assert.is_true(r >= 240 and g >= 230 and b >= 190)
+    assert.not_equals(desc.committed_stops[1], desc.committed_stops[#desc.committed_stops])
+  end)
+
+  it("maps freshest bucket to freshest stop and oldest bucket to oldest stop", function()
+    config.setup({ bucket_count = 3, gradient = { style = "custom", custom = { stops = { "#111111", "#777777", "#fefefe" } } } })
+    palette.build()
+
+    local oldest = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket3", link = false }).bg
+    local freshest = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket1", link = false }).bg
+
+    assert.equals(0x111111, oldest)
+    assert.equals(0xfefefe, freshest)
+  end)
+
+  it("uses custom gradient stops and uncommitted override", function()
+    config.setup({
+      gradient = {
+        style = "custom",
+        custom = {
+          stops = { "#102030", "#405060", "#708090" },
+          uncommitted = "#a0b0c0",
+        },
+      },
+    })
+
+    local desc = palette.describe()
+    assert.equals("custom", desc.style)
+    assert.same({ "#102030", "#405060", "#708090" }, desc.committed_stops)
+    assert.equals("#a0b0c0", desc.uncommitted)
+  end)
+
+  it("normalizes short custom hex colors", function()
+    config.setup({
+      gradient = {
+        style = "custom",
+        custom = {
+          stops = { "#123", "456", "#789abc" },
+          uncommitted = "abc",
+        },
+      },
+    })
+
+    local cfg = config.get()
+    assert.same({ "#112233", "#445566", "#789abc" }, cfg.gradient.custom.stops)
+    assert.equals("#aabbcc", cfg.gradient.custom.uncommitted)
+  end)
+
+  it("falls back to monotone when custom style has no valid stops", function()
+    config.setup({ gradient = { style = "custom", custom = { stops = { "nope" } } } })
+    assert.equals("monotone", config.get().gradient.style)
+  end)
+
+  it("maps legacy accent_hl into gradient accent_hl", function()
+    config.setup({ accent_hl = "Function" })
+    assert.equals("Function", config.get().gradient.accent_hl)
   end)
 end)

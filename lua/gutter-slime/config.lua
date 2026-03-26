@@ -16,6 +16,16 @@ local VALID_CURVES = {
   smooth = true,
 }
 
+local VALID_GRADIENT_STYLES = {
+  monotone = true,
+  vibrant = true,
+  muted = true,
+  slime = true,
+  rainbow = true,
+  thermal = true,
+  custom = true,
+}
+
 ---@class GutterSlimeConfig
 ---@field enabled boolean
 ---@field debounce_ms integer
@@ -26,6 +36,7 @@ local VALID_CURVES = {
 ---@field show_uncommitted boolean
 ---@field disable_in_diff boolean
 ---@field accent_hl string|nil
+---@field gradient { style: string, accent_hl: string|nil, custom: { stops: string[], uncommitted: string|nil } }
 ---@field debug boolean
 
 ---@type GutterSlimeConfig
@@ -39,6 +50,14 @@ M.defaults = {
   show_uncommitted = true,
   disable_in_diff = true,
   accent_hl = nil,
+  gradient = {
+    style = "monotone",
+    accent_hl = nil,
+    custom = {
+      stops = {},
+      uncommitted = nil,
+    },
+  },
   debug = false,
 }
 
@@ -56,6 +75,75 @@ M.view_defaults = {
 ---@param level integer
 local function notify(msg, level)
   vim.notify("gutter-slime: " .. msg, level)
+end
+
+---@param value any
+---@return string[]
+local function normalize_stop_list(value)
+  local util = require("gutter-slime.util")
+
+  if type(value) ~= "table" then
+    return {}
+  end
+
+  local stops = {}
+  for _, entry in ipairs(value) do
+    local normalized = util.normalize_hex(entry)
+    if normalized then
+      table.insert(stops, normalized)
+    end
+  end
+  return stops
+end
+
+---@param cfg GutterSlimeConfig
+local function normalize_gradient(cfg)
+  local util = require("gutter-slime.util")
+  local defaults = M.defaults.gradient
+  local gradient = cfg.gradient
+
+  if type(gradient) ~= "table" then
+    notify("gradient must be a table; using defaults", vim.log.levels.WARN)
+    gradient = vim.deepcopy(defaults)
+    cfg.gradient = gradient
+  end
+
+  if gradient.accent_hl == nil and type(cfg.accent_hl) == "string" and cfg.accent_hl ~= "" then
+    gradient.accent_hl = cfg.accent_hl
+  end
+
+  if type(gradient.style) ~= "string" or not VALID_GRADIENT_STYLES[gradient.style] then
+    notify("gradient.style must be one of monotone, vibrant, muted, slime, rainbow, thermal, custom; using default", vim.log.levels.WARN)
+    gradient.style = defaults.style
+  end
+
+  if gradient.accent_hl ~= nil and type(gradient.accent_hl) ~= "string" then
+    notify("gradient.accent_hl must be a string or nil; clearing override", vim.log.levels.WARN)
+    gradient.accent_hl = nil
+  end
+
+  if type(gradient.custom) ~= "table" then
+    notify("gradient.custom must be a table; using defaults", vim.log.levels.WARN)
+    gradient.custom = vim.deepcopy(defaults.custom)
+  end
+
+  gradient.custom.stops = normalize_stop_list(gradient.custom.stops)
+  if gradient.style == "custom" and #gradient.custom.stops == 0 then
+    notify("gradient.custom.stops must contain at least one hex color for custom style; using monotone", vim.log.levels.WARN)
+    gradient.style = "monotone"
+  end
+
+  if gradient.custom.uncommitted ~= nil then
+    local normalized = util.normalize_hex(gradient.custom.uncommitted)
+    if normalized then
+      gradient.custom.uncommitted = normalized
+    else
+      notify("gradient.custom.uncommitted must be a hex color; clearing override", vim.log.levels.WARN)
+      gradient.custom.uncommitted = nil
+    end
+  end
+
+  cfg.accent_hl = gradient.accent_hl
 end
 
 ---@param value any
@@ -160,6 +248,8 @@ local function normalize(cfg, baseline)
     cfg.curve = M.defaults.curve
   end
 
+  normalize_gradient(cfg)
+
   cfg.recent_days = recent
   cfg.old_days = old
 
@@ -210,6 +300,27 @@ end
 ---@return string[]
 function M.curve_names()
   return { "linear", "recent", "old", "smooth" }
+end
+
+---@return string[]
+function M.gradient_style_names()
+  return { "monotone", "vibrant", "muted", "slime", "rainbow", "thermal", "custom" }
+end
+
+---@param style string
+---@return boolean, string|nil
+function M.update_gradient_style(style)
+  if type(style) ~= "string" or not VALID_GRADIENT_STYLES[style] then
+    return false, "gradient style must be one of monotone, vibrant, muted, slime, rainbow, thermal, custom"
+  end
+
+  if style == "custom" and #M.current.gradient.custom.stops == 0 then
+    return false, "gradient.custom.stops must contain at least one hex color before using custom style"
+  end
+
+  M.current.gradient.style = style
+  M.current.accent_hl = M.current.gradient.accent_hl
+  return true, nil
 end
 
 ---@param patch table

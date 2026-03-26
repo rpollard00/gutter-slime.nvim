@@ -45,6 +45,35 @@ describe("bucket mapping", function()
     assert.equals(0, cfg.recent_days)
     assert.equals(180, cfg.old_days)
     assert.equals("recent", cfg.curve)
+    assert.equals("monotone", cfg.gradient.style)
+  end)
+
+  it("set_gradient_style() updates the active style", function()
+    gs.setup({ enabled = false })
+
+    assert.is_true(gs.set_gradient_style("thermal"))
+    assert.equals("thermal", config.get().gradient.style)
+  end)
+
+  it("set_gradient_style() rejects custom without stops", function()
+    gs.setup({ enabled = false })
+
+    assert.is_false(gs.set_gradient_style("custom"))
+    assert.equals("monotone", config.get().gradient.style)
+  end)
+
+  it("set_gradient_style() accepts custom when stops exist", function()
+    gs.setup({
+      enabled = false,
+      gradient = {
+        custom = {
+          stops = { "#112233", "#445566" },
+        },
+      },
+    })
+
+    assert.is_true(gs.set_gradient_style("custom"))
+    assert.equals("custom", config.get().gradient.style)
   end)
 
   it("parse_duration_days accepts numbers, day strings, and hour strings", function()

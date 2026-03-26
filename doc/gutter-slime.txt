@@ -95,9 +95,26 @@ Pass an options table to |setup()|. All fields are optional. >lua
     -- Disable rendering in diff mode.
     disable_in_diff = true,
 
-    -- Optional highlight group whose foreground colour is used as the
-    -- bright accent endpoint. Defaults to automatic theme derivation.
+    -- Optional legacy alias for gradient.accent_hl.
     accent_hl = nil,
+
+    gradient = {
+      -- monotone | vibrant | muted | slime | rainbow | thermal | custom
+      style = "monotone",
+
+      -- Optional highlight group whose foreground colour is used as the
+      -- bright accent endpoint for theme-based styles.
+      accent_hl = nil,
+
+      custom = {
+        -- List of hex color stops from oldest to freshest. The freshest bucket
+        -- uses the last stop.
+        stops = {},
+
+        -- Optional override for uncommitted / unsaved lines.
+        uncommitted = nil,
+      },
+    },
 
     -- Enable verbose debug notifications.
     debug = false,
@@ -106,6 +123,16 @@ Pass an options table to |setup()|. All fields are optional. >lua
 
 `recent_days` and `old_days` accept Lua numbers as days or strings like
 `"14"`, `"7d"`, and `"48h"`.
+
+Gradient styles:
+
+  monotone    Restrained theme-derived fade toward a single accent.
+  vibrant     Uses brighter theme foreground groups for the freshest side.
+  muted       Softer low-contrast theme-derived gradient.
+  slime       Green ooze preset blended against the active background.
+  rainbow     Multi-hue arcade gradient blended against the active background.
+  thermal     Deep blue to white heatmap with magenta/red/yellow mids.
+  custom      Interpolates across `gradient.custom.stops`.
 
 ==============================================================================
 6. COMMANDS                                             *gutter-slime-commands*
@@ -128,12 +155,18 @@ Pass an options table to |setup()|. All fields are optional. >lua
                         buffer's heatmap state (bucket, timestamp, palette
                         groups, attached windows). Useful for debugging.
 
-                                                       *:GutterSlimeSetCurve*
+                                                        *:GutterSlimeSetCurve*
 :GutterSlimeSetCurve {name}
                         Set the active age curve. Valid values are `linear`,
                         `recent`, `old`, and `smooth`.
 
-                                                         *:GutterSlimeSetOld*
+                                                *:GutterSlimeSetGradientStyle*
+:GutterSlimeSetGradientStyle {name}
+                        Set the active gradient style. Valid values are
+                        `monotone`, `vibrant`, `muted`, `slime`, `rainbow`,
+                        `thermal`, and `custom`.
+
+                                                          *:GutterSlimeSetOld*
 :GutterSlimeSetOld {value}
                         Set the stale edge of the active age window. Values
                         accept days or suffixed durations like `48h`.

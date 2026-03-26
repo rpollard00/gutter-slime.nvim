@@ -1,13 +1,13 @@
 # gutter-slime
 
-A Neovim plugin that visualizes per-line git recency in the gutter using a theme-aware background gradient.
+A Neovim plugin that visualizes per-line git recency in the gutter using a configurable, theme-aware background gradient.
 
 Brighter gutter cells indicate recently changed lines. Darker cells indicate older changes. The brightness scale uses an adjustable age window, so you can zoom from long-term history down into the last few hours without rerunning blame.
 
 ## Features
 
 - Per-line git recency heatmap rendered as a narrow strip in `statuscolumn`
-- Theme-aware palette: derives accent and base colours from the active colorscheme
+- Configurable gradient styles: monotone, vibrant, muted, slime, rainbow, thermal, or custom stops
 - Adjustable age buckets with curve presets and zoom helpers
 - Uncommitted/unsaved line highlighting
 - Async git blame with debouncing and caching
@@ -63,12 +63,46 @@ require("gutter-slime").setup({
   curve = "recent",
   show_uncommitted = true,
   disable_in_diff = true,
-  accent_hl = nil,   -- highlight group whose fg drives the bright accent
+  accent_hl = nil,   -- legacy alias for gradient.accent_hl
+  gradient = {
+    style = "monotone", -- monotone | vibrant | muted | slime | rainbow | thermal | custom
+    accent_hl = nil,     -- highlight group whose fg drives theme-based styles
+    custom = {
+      stops = {},        -- oldest to freshest color stops
+      uncommitted = nil, -- optional override for bucket 0
+    },
+  },
   debug = false,
 })
 ```
 
 `recent_days` and `old_days` accept Lua numbers as days or strings like `"14"`, `"7d"`, and `"48h"`.
+
+Gradient styles:
+
+- `monotone`: restrained theme-derived fade toward a single accent
+- `vibrant`: prefers brighter, more colorful theme foreground groups for the freshest side
+- `muted`: softer low-contrast theme-derived gradient
+- `slime`: green ooze preset blended against the active gutter/background tone
+- `rainbow`: multi-hue arcade gradient blended into the active theme background
+- `thermal`: thermal-camera ramp from deep blue through magenta/red/orange/yellow to white
+- `custom`: interpolates across `gradient.custom.stops`
+
+For custom gradients, list stops from oldest to freshest. The freshest committed bucket uses the last stop.
+
+Example custom gradient:
+
+```lua
+require("gutter-slime").setup({
+  gradient = {
+    style = "custom",
+    custom = {
+      stops = { "#16351e", "#2e6f38", "#56b84f", "#b1ff7a" },
+      uncommitted = "#d2ff96",
+    },
+  },
+})
+```
 
 ## Commands
 
@@ -80,6 +114,7 @@ require("gutter-slime").setup({
 | `:GutterSlimeRefresh` | Force a fresh blame run for the current buffer |
 | `:GutterSlimeInspect` | Print diagnostic state for the current buffer |
 | `:GutterSlimeSetCurve {name}` | Set the active age curve |
+| `:GutterSlimeSetGradientStyle {name}` | Set the active gradient style |
 | `:GutterSlimeSetOld {value}` | Set the stale edge of the active age window |
 | `:GutterSlimeSetRange {recent} {old}` | Set both active age-window endpoints |
 | `:GutterSlimeAdjustOld {+/-value}` | Move the stale edge by a duration |
@@ -96,6 +131,7 @@ vim.keymap.set("n", "]g", "<cmd>GutterSlimeZoomIn<cr>")
 vim.keymap.set("n", "[g", "<cmd>GutterSlimeZoomOut<cr>")
 vim.keymap.set("n", "<leader>gr", "<cmd>GutterSlimeSetOld 48h<cr>")
 vim.keymap.set("n", "<leader>gl", "<cmd>GutterSlimeSetCurve linear<cr>")
+vim.keymap.set("n", "<leader>gs", "<cmd>GutterSlimeSetGradientStyle slime<cr>")
 ```
 
 ## Highlight Groups
