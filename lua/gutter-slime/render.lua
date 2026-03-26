@@ -13,15 +13,14 @@ local _attached = {}
 local _STC = "%s%=%{&nu?(&rnu?v:relnum==0?v:lnum:v:relnum:v:lnum):''}"
   .. " %{%v:lua.require('gutter-slime.render')._stc_line()%} "
 
+---@param bufnr integer
+---@param lnum integer
+---@param virtnum integer
 ---@return string
-function M._stc_line()
-  if vim.v.virtnum ~= 0 then
+function M._stc_line_at(bufnr, lnum, virtnum)
+  if virtnum ~= 0 then
     return " "
   end
-
-  local winid = vim.api.nvim_get_current_win()
-  local bufnr = vim.api.nvim_win_get_buf(winid)
-  local lnum = vim.v.lnum
 
   local bucket = cache.get_bucket(bufnr, lnum)
   if bucket == nil then
@@ -35,6 +34,13 @@ function M._stc_line()
 
   local group = palette.group_for_bucket(bucket)
   return "%#" .. group .. "# %##"
+end
+
+---@return string
+function M._stc_line()
+  local winid = vim.api.nvim_get_current_win()
+  local bufnr = vim.api.nvim_win_get_buf(winid)
+  return M._stc_line_at(bufnr, vim.v.lnum, vim.v.virtnum)
 end
 
 ---@param winid integer

@@ -83,31 +83,25 @@ describe("render", function()
   -- _stc_line()
   -- -------------------------------------------------------------------------
 
-  it("_stc_line() returns a plain space when v:virtnum != 0", function()
-    -- Simulate a wrapped continuation line.
-    vim.v.virtnum = 1
-    local result = render._stc_line()
-    vim.v.virtnum = 0
+  it("_stc_line_at() returns a plain space when virtnum != 0", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local result = render._stc_line_at(bufnr, 1, 1)
     assert.equals(" ", result)
   end)
 
-  it("_stc_line() returns a plain space when no cache data exists", function()
-    vim.v.virtnum = 0
-    vim.v.lnum = 1
-    -- Cache is empty — no blame data stored.
-    local result = render._stc_line()
+  it("_stc_line_at() returns a plain space when no cache data exists", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local result = render._stc_line_at(bufnr, 1, 0)
     assert.equals(" ", result)
   end)
 
-  it("_stc_line() returns a highlight string when cache has a bucket", function()
+  it("_stc_line_at() returns a highlight string when cache has a bucket", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local cache = require("gutter-slime.cache")
     local rid = cache.new_request(bufnr)
     cache.store(bufnr, rid, 1, { 2 }, { 100 }) -- line 1 = bucket 2
 
-    vim.v.virtnum = 0
-    vim.v.lnum = 1
-    local result = render._stc_line()
+    local result = render._stc_line_at(bufnr, 1, 0)
     -- Should contain a highlight group name and a space.
     assert.is_truthy(result:find("^%%#GutterSlime"))
     assert.is_truthy(result:find(" "))

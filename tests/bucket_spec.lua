@@ -87,7 +87,7 @@ describe("bucket mapping", function()
     local now = os.time()
 
     assert.equals(1, gs._ts_to_bucket(now - 60 * 60))
-    assert.equals(1, gs._ts_to_bucket(now - 8 * 60 * 60))
+    assert.equals(2, gs._ts_to_bucket(now - 8 * 60 * 60))
     assert.equals(4, gs._ts_to_bucket(now - 24 * 60 * 60))
     assert.equals(7, gs._ts_to_bucket(now - 48 * 60 * 60))
     assert.equals(7, gs._ts_to_bucket(now - 72 * 60 * 60))
@@ -180,7 +180,7 @@ describe("bucket mapping", function()
   end)
 
   it("rebuckets cached timestamps without rerunning blame", function()
-    gs.setup({ enabled = true, bucket_count = 7, recent_days = 0, old_days = "48h", curve = "linear" })
+    gs.setup({ enabled = false, bucket_count = 7, recent_days = 0, old_days = "48h", curve = "linear" })
 
     local bufnr = vim.api.nvim_get_current_buf()
     local winid = vim.api.nvim_get_current_win()

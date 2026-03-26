@@ -23,11 +23,11 @@ local ZOOM_LADDER_DAYS = {
   1,
   0.75,
   0.5,
-  0.333,
+  1 / 3,
   0.25,
-  0.167,
+  1 / 6,
   0.125,
-  0.083,
+  1 / 12,
   1 / 24,
 }
 
@@ -109,7 +109,7 @@ local function rebucket_buf(bufnr)
     buckets,
     timestamps
   )
-  if stored and vim.api.nvim_buf_is_valid(bufnr) then
+  if stored and _enabled and vim.api.nvim_buf_is_valid(bufnr) then
     require("gutter-slime.render").refresh_buf(bufnr)
   end
   return stored
@@ -124,21 +124,6 @@ local function rebucket_all()
   if _enabled then
     M._redraw_all()
   end
-end
-
----@param value number
----@return integer
-local function closest_zoom_index(value)
-  local best_i = 1
-  local best_dist = math.huge
-  for i, entry in ipairs(ZOOM_LADDER_DAYS) do
-    local dist = math.abs(entry - value)
-    if dist < best_dist then
-      best_i = i
-      best_dist = dist
-    end
-  end
-  return best_i
 end
 
 ---@param current number
