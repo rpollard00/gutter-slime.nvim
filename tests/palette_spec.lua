@@ -54,7 +54,22 @@ describe("palette", function()
   it("defaults to monotone gradient style", function()
     local desc = palette.describe()
     assert.equals("monotone", desc.style)
+    assert.equals("linear", desc.curve)
     assert.equals(3, #desc.committed_stops)
+  end)
+
+  it("stores a separate gradient sampling curve", function()
+    config.setup({ gradient = { curve = "recent" } })
+    local desc = palette.describe()
+
+    assert.equals("recent", desc.curve)
+    assert.equals("recent", config.get().gradient.curve)
+  end)
+
+  it("falls back to linear for invalid gradient curves", function()
+    config.setup({ gradient = { curve = "invalid" } })
+
+    assert.equals("linear", config.get().gradient.curve)
   end)
 
   it("supports vibrant, muted, slime, rainbow, and thermal preset styles", function()
@@ -106,6 +121,26 @@ describe("palette", function()
 
     assert.equals(0x111111, oldest)
     assert.equals(0xfefefe, freshest)
+  end)
+
+  it("applies gradient curve without changing endpoint buckets", function()
+    config.setup({
+      bucket_count = 3,
+      gradient = {
+        style = "custom",
+        curve = "recent",
+        custom = { stops = { "#000000", "#777777", "#ffffff" } },
+      },
+    })
+    palette.build()
+
+    local oldest = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket3", link = false }).bg
+    local middle = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket2", link = false }).bg
+    local freshest = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket1", link = false }).bg
+
+    assert.equals(0x000000, oldest)
+    assert.equals(0xffffff, freshest)
+    assert.not_equals(0x777777, middle)
   end)
 
   it("uses custom gradient stops and uncommitted override", function()

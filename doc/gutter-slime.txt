@@ -102,6 +102,10 @@ Pass an options table to |setup()|. All fields are optional. >lua
       -- monotone | vibrant | muted | slime | rainbow | thermal | custom
       style = "monotone",
 
+      -- Visual color sampling curve. Options: "linear", "recent", "old",
+      -- "smooth". This does not affect age-to-bucket mapping.
+      curve = "linear",
+
       -- Optional highlight group whose foreground colour is used as the
       -- bright accent endpoint for theme-based styles.
       accent_hl = nil,
@@ -123,6 +127,10 @@ Pass an options table to |setup()|. All fields are optional. >lua
 
 `recent_days` and `old_days` accept Lua numbers as days or strings like
 `"14"`, `"7d"`, and `"48h"`.
+
+The top-level `curve` controls how line ages are assigned to buckets.
+`gradient.curve` only controls how those buckets sample the visible colour
+ramp.
 
 Gradient styles:
 

@@ -66,6 +66,7 @@ require("gutter-slime").setup({
   accent_hl = nil,   -- legacy alias for gradient.accent_hl
   gradient = {
     style = "monotone", -- monotone | vibrant | muted | slime | rainbow | thermal | custom
+    curve = "linear",   -- linear | recent | old | smooth; visual color sampling only
     accent_hl = nil,     -- highlight group whose fg drives theme-based styles
     custom = {
       stops = {},        -- oldest to freshest color stops
@@ -77,6 +78,9 @@ require("gutter-slime").setup({
 ```
 
 `recent_days` and `old_days` accept Lua numbers as days or strings like `"14"`, `"7d"`, and `"48h"`.
+
+The top-level `curve` controls how line ages are assigned to buckets.
+`gradient.curve` only controls how those buckets sample the visual color ramp.
 
 Gradient styles:
 
@@ -96,6 +100,7 @@ Example custom gradient:
 require("gutter-slime").setup({
   gradient = {
     style = "custom",
+    curve = "recent",
     custom = {
       stops = { "#16351e", "#2e6f38", "#56b84f", "#b1ff7a" },
       uncommitted = "#d2ff96",

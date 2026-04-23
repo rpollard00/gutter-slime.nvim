@@ -247,7 +247,26 @@ local function resolve_style(cfg, base_bg, dark)
   return stops, uncommitted, accent
 end
 
----@return { style: string, base_bg: string, accent: string, committed_stops: string[], uncommitted: string }|nil
+---@param pos number
+---@param curve string
+---@return number
+local function apply_gradient_curve(pos, curve)
+  if curve == "linear" then
+    return pos
+  end
+  if curve == "recent" then
+    return math.sqrt(pos)
+  end
+  if curve == "old" then
+    return pos ^ 1.6
+  end
+  if curve == "smooth" then
+    return pos * pos * (3 - 2 * pos)
+  end
+  return pos
+end
+
+---@return { style: string, curve: string, base_bg: string, accent: string, committed_stops: string[], uncommitted: string }|nil
 function M.describe()
   local cfg = require("gutter-slime.config").get()
   local base_bg = resolve_base_bg()
@@ -255,6 +274,7 @@ function M.describe()
   local committed_stops, uncommitted, accent = resolve_style(cfg, base_bg, dark)
   return {
     style = cfg.gradient.style,
+    curve = cfg.gradient.curve,
     base_bg = base_bg,
     accent = accent,
     committed_stops = vim.deepcopy(committed_stops),
@@ -278,7 +298,8 @@ function M.build()
 
   for i = 1, n do
     local pos = 1 - ((i - 1) / math.max(n - 1, 1))
-    local bucket_bg = util.sample_hex_gradient(desc.committed_stops, pos)
+    local curved = util.clamp(apply_gradient_curve(pos, cfg.gradient.curve), 0, 1)
+    local bucket_bg = util.sample_hex_gradient(desc.committed_stops, curved)
     local group = GROUP_PREFIX .. i
     vim.api.nvim_set_hl(0, group, { bg = bucket_bg })
     table.insert(_built_groups, group)
