@@ -11,7 +11,15 @@ local _attached = {}
 -- `%*` is unreliable inside `%{%...%}`. `%##` resets to Normal safely.
 -- The trailing literal space preserves the usual gap between gutter and text.
 local _SLIME_STC = " %{%v:lua.require('gutter-slime.render')._stc_line()%} "
-local _DEFAULT_STC = "%s%=%{&nu?(&rnu?v:relnum==0?v:lnum:v:relnum:v:lnum):''}" .. _SLIME_STC
+local _NUMBER_STC = "%s%=%{&nu?(&rnu?v:relnum==0?v:lnum:v:relnum:v:lnum):''}"
+local _DEFAULT_STC = _NUMBER_STC .. _SLIME_STC
+
+---@param stc string
+---@return string stripped, boolean had_slime
+local function strip_slime_stc(stc)
+  local stripped, count = stc:gsub(vim.pesc(_SLIME_STC), "")
+  return stripped, count > 0
+end
 
 ---@param bufnr integer
 ---@param lnum integer
@@ -32,7 +40,7 @@ function M._stc_line_at(bufnr, lnum, virtnum)
     return " "
   end
 
-  return palette.fragment_for_bucket(bucket)
+  return palette.fragment_for_bucket(bucket, { jj_current = cache.is_jj_current(bufnr, lnum) })
 end
 
 ---@return string
@@ -56,8 +64,14 @@ function M.attach_win(winid)
   end
 
   local prev = vim.wo[winid].statuscolumn
-  _attached[winid] = { prev_stc = prev }
-  vim.wo[winid].statuscolumn = prev ~= "" and (prev .. _SLIME_STC) or _DEFAULT_STC
+  local stripped, had_slime = strip_slime_stc(prev)
+  local restore_stc = prev == _DEFAULT_STC and "" or stripped
+  _attached[winid] = { prev_stc = restore_stc }
+  vim.wo[winid].statuscolumn = stripped ~= "" and (stripped .. _SLIME_STC) or _DEFAULT_STC
+
+  if had_slime then
+    require("gutter-slime.util").debug("render: normalized existing slime statuscolumn win=%d", winid)
+  end
 
   vim.api.nvim_win_call(winid, function()
     vim.cmd("redrawstatus")

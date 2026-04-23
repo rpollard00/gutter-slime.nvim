@@ -96,6 +96,16 @@ describe("bucket mapping", function()
     assert.equals("custom", config.get().gradient.style)
   end)
 
+  it("jj current marker treats zero-SHA blame lines as current jj changes", function()
+    local zero = "0000000000000000000000000000000000000000"
+    local head = "1111111111111111111111111111111111111111"
+
+    assert.is_true(gs._is_jj_current_entry({ sha = head }, head))
+    assert.is_true(gs._is_jj_current_entry({ sha = zero }, head))
+    assert.is_false(gs._is_jj_current_entry({ sha = "2222222222222222222222222222222222222222" }, head))
+    assert.is_false(gs._is_jj_current_entry({ sha = zero }, nil))
+  end)
+
   it("parse_duration_days accepts numbers, day strings, and hour strings", function()
     local parse = config.parse_duration_days
     assert.equals(14, select(1, parse(14)))

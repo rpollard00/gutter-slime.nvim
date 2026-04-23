@@ -6,6 +6,8 @@ local M = {}
 local _initialized = false
 local _enabled = false
 
+local ZERO_SHA = "0000000000000000000000000000000000000000"
+
 local ZOOM_LADDER_DAYS = {
   180,
   120,
@@ -217,7 +219,8 @@ local function rebucket_buf(bufnr)
     cache.current_request(bufnr),
     cache.get_changedtick(bufnr) or 0,
     buckets,
-    timestamps
+    timestamps,
+    cache.get_jj_current(bufnr)
   )
   if stored and _enabled and vim.api.nvim_buf_is_valid(bufnr) then
     require("gutter-slime.render").refresh_buf(bufnr)
@@ -296,6 +299,13 @@ local function apply_gradient_style(style, ok_msg)
 end
 
 ---@param bufnr integer
+local function is_jj_current_entry(entry, jj_current_sha)
+  if not jj_current_sha or not entry then
+    return false
+  end
+  return entry.sha == jj_current_sha or entry.sha == ZERO_SHA
+end
+
 local function apply_real_blame(bufnr)
   local path = vim.api.nvim_buf_get_name(bufnr)
   if path == "" then
@@ -308,42 +318,57 @@ local function apply_real_blame(bufnr)
   local request_tick = vim.b[bufnr] and vim.b[bufnr].changedtick or 0
   local dirty = vim.bo[bufnr].modified
 
-  require("gutter-slime.blame").blame_async(
-    bufnr,
-    path,
-    nil,
-    dirty,
-    req_id,
-    request_tick,
-    function(result)
-      local current_tick = vim.api.nvim_buf_is_valid(bufnr) and (vim.b[bufnr].changedtick or 0) or -1
-      if cache.current_request(bufnr) ~= req_id or current_tick ~= request_tick then
-        log_debug("apply_real_blame: stale result discarded buf=%d req=%d", bufnr, req_id)
-        return
-      end
+  local function run_blame(jj_current_sha)
+    require("gutter-slime.blame").blame_async(
+      bufnr,
+      path,
+      nil,
+      dirty,
+      req_id,
+      request_tick,
+      function(result)
+        local current_tick = vim.api.nvim_buf_is_valid(bufnr) and (vim.b[bufnr].changedtick or 0) or -1
+        if cache.current_request(bufnr) ~= req_id or current_tick ~= request_tick then
+          log_debug("apply_real_blame: stale result discarded buf=%d req=%d", bufnr, req_id)
+          return
+        end
 
-      if not result then
-        log_debug("apply_real_blame: no blame result buf=%d", bufnr)
-        cache.store(bufnr, req_id, request_tick, {}, {})
-        render.clear_buf(bufnr)
-        return
-      end
+        if not result then
+          log_debug("apply_real_blame: no blame result buf=%d", bufnr)
+          cache.store(bufnr, req_id, request_tick, {}, {})
+          render.clear_buf(bufnr)
+          return
+        end
 
-      local timestamps = {}
-      for i, entry in ipairs(result) do
-        timestamps[i] = entry.timestamp
-      end
-      local buckets = timestamps_to_buckets(timestamps)
+        local timestamps = {}
+        local jj_current = jj_current_sha and {} or nil
+        for i, entry in ipairs(result) do
+          timestamps[i] = entry.timestamp
+          if is_jj_current_entry(entry, jj_current_sha) then
+            jj_current[i] = true
+          end
+        end
+        local buckets = timestamps_to_buckets(timestamps)
 
-      local stored = cache.store(bufnr, req_id, request_tick, buckets, timestamps)
-      if stored then
-        log_debug("apply_real_blame: stored buf=%d lines=%d", bufnr, #buckets)
-        if vim.api.nvim_buf_is_valid(bufnr) then
-          render.refresh_buf(bufnr)
+        local stored = cache.store(bufnr, req_id, request_tick, buckets, timestamps, jj_current)
+        if stored then
+          log_debug("apply_real_blame: stored buf=%d lines=%d", bufnr, #buckets)
+          if vim.api.nvim_buf_is_valid(bufnr) then
+            render.refresh_buf(bufnr)
+          end
         end
       end
+    )
+  end
+
+  require("gutter-slime.jj").current_commit_async(path, function(jj_current_sha)
+    local current_tick = vim.api.nvim_buf_is_valid(bufnr) and (vim.b[bufnr].changedtick or 0) or -1
+    if cache.current_request(bufnr) ~= req_id or current_tick ~= request_tick then
+      log_debug("apply_real_blame: stale jj result discarded buf=%d req=%d", bufnr, req_id)
+      return
     end
-  )
+    run_blame(jj_current_sha)
+  end)
 end
 
 ---@param opts table|nil
@@ -594,5 +619,6 @@ end
 M._ts_to_bucket = ts_to_absolute_bucket
 M._timestamps_to_buckets = timestamps_to_buckets
 M._zoom_ladder_days = ZOOM_LADDER_DAYS
+M._is_jj_current_entry = is_jj_current_entry
 
 return M

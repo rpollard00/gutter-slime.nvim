@@ -46,6 +46,7 @@ local VALID_BUCKET_MODES = {
 ---@field disable_in_diff boolean
 ---@field accent_hl string|nil
 ---@field gradient { style: string, curve: string, min_contrast: number, min_contrast_by_style: table<string, number>, accent_hl: string|nil, custom: { stops: string[], uncommitted: string|nil } }
+---@field jj { enabled: boolean, current_change: boolean, marker: string, marker_hl: string|nil }
 ---@field debug boolean
 
 ---@type GutterSlimeConfig
@@ -81,6 +82,12 @@ M.defaults = {
       stops = {},
       uncommitted = nil,
     },
+  },
+  jj = {
+    enabled = true,
+    current_change = true,
+    marker = "▌",
+    marker_hl = nil,
   },
   debug = false,
 }
@@ -191,6 +198,38 @@ local function normalize_gradient(cfg)
   end
 
   cfg.accent_hl = gradient.accent_hl
+end
+
+---@param cfg GutterSlimeConfig
+local function normalize_jj(cfg)
+  local defaults = M.defaults.jj
+  local jj = cfg.jj
+
+  if type(jj) ~= "table" then
+    notify("jj must be a table; using defaults", vim.log.levels.WARN)
+    jj = vim.deepcopy(defaults)
+    cfg.jj = jj
+  end
+
+  if type(jj.enabled) ~= "boolean" then
+    notify("jj.enabled must be a boolean; using default", vim.log.levels.WARN)
+    jj.enabled = defaults.enabled
+  end
+
+  if type(jj.current_change) ~= "boolean" then
+    notify("jj.current_change must be a boolean; using default", vim.log.levels.WARN)
+    jj.current_change = defaults.current_change
+  end
+
+  if type(jj.marker) ~= "string" or jj.marker == "" then
+    notify("jj.marker must be a non-empty string; using default", vim.log.levels.WARN)
+    jj.marker = defaults.marker
+  end
+
+  if jj.marker_hl ~= nil and type(jj.marker_hl) ~= "string" then
+    notify("jj.marker_hl must be a string or nil; clearing override", vim.log.levels.WARN)
+    jj.marker_hl = nil
+  end
 end
 
 ---@param cfg GutterSlimeConfig
@@ -325,6 +364,7 @@ local function normalize(cfg, baseline)
   end
 
   normalize_gradient(cfg)
+  normalize_jj(cfg)
   normalize_relative(cfg)
 
   cfg.recent_days = recent

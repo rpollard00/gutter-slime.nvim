@@ -148,6 +148,20 @@ Pass an options table to |setup()|. All fields are optional. >lua
       },
     },
 
+    jj = {
+      -- Auto-detect jj repos using the Git backend. Set false to disable.
+      enabled = true,
+
+      -- Mark lines attributed to jj's current @ commit.
+      current_change = true,
+
+      -- Marker rendered over the normal bucket background.
+      marker = "▌",
+
+      -- Optional highlight group whose foreground colours the marker.
+      marker_hl = nil,
+    },
+
     -- Enable verbose debug notifications.
     debug = false,
   })
@@ -172,6 +186,17 @@ indistinguishable adjacent buckets on low-contrast themes. Built-in styles use
 `gradient.min_contrast_by_style` defaults tuned for their luminance range; if
 you explicitly set `gradient.min_contrast`, that global value overrides the
 style defaults. Custom gradients are rendered as authored.
+
+Jujutsu support is auto-detected and safe for Git-only repositories. When `jj`
+is available and the buffer is inside a jj repository using the Git backend,
+gutter-slime resolves jj's current `@` id and overlays `jj.marker` on lines
+whose Git blame SHA matches that id. Because current jj working-copy changes may
+show up in Git blame as the all-zero "not committed yet" SHA, zero-SHA blame
+lines are also marked while inside a detected jj repo. The marker foreground is
+chosen per bucket from theme/git/diagnostic foregrounds with enough contrast,
+falling back to black or white when the theme colors would be unreadable. Set
+`jj.marker_hl` to force a specific marker color, or `jj.enabled = false` to skip
+all jj detection.
 
 Gradient styles:
 
@@ -265,7 +290,10 @@ colorscheme or after-colorscheme hook to customise colours.
   ...
   GutterSlimeBucketN    Oldest committed lines (near-invisible).
 
-The exact number of groups matches `bucket_count + 1`.
+The exact number of base bucket groups matches `bucket_count + 1`. When jj
+current-change markers are enabled, companion groups named like
+`GutterSlimeBucket1JjCurrent` are used for the marker foreground over the same
+bucket background.
 
 Example override: >lua
   vim.api.nvim_set_hl(0, "GutterSlimeBucket0", { bg = "#ff8800" })
@@ -278,6 +306,7 @@ Run |:checkhealth| gutter-slime to verify:
 
   - Neovim version compatibility
   - git availability
+  - optional jj integration status
   - |'statuscolumn'| support
   - Plugin enabled state
   - Palette build status

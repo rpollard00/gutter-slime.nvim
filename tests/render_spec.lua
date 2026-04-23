@@ -71,6 +71,19 @@ describe("render", function()
     assert.equals(1, #render.attached_wins())
   end)
 
+  it("attach_win() does not duplicate a pre-existing slime cell", function()
+    local winid = vim.api.nvim_get_current_win()
+    vim.wo[winid].statuscolumn = "%l %{%v:lua.require('gutter-slime.render')._stc_line()%} "
+
+    render.attach_win(winid)
+    local _, count = vim.wo[winid].statuscolumn:gsub("gutter%-slime%.render", "")
+
+    assert.equals(1, count)
+
+    render.detach_win(winid)
+    assert.equals("%l", vim.wo[winid].statuscolumn)
+  end)
+
   it("attached_wins() returns all attached window ids", function()
     local winid = vim.api.nvim_get_current_win()
     assert.equals(0, #render.attached_wins())
@@ -120,6 +133,19 @@ describe("render", function()
     -- Should contain a highlight group name and a space.
     assert.is_truthy(result:find("^%%#GutterSlime"))
     assert.is_truthy(result:find(" "))
+  end)
+
+  it("_stc_line_at() renders the jj current marker when cached", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local cache = require("gutter-slime.cache")
+    local config = require("gutter-slime.config")
+    config.setup({ jj = { marker = "@" } })
+    require("gutter-slime.palette").build()
+
+    local rid = cache.new_request(bufnr)
+    cache.store(bufnr, rid, 1, { 2 }, { 100 }, { [1] = true })
+
+    assert.equals("%#GutterSlimeBucket2JjCurrent#@%##", render._stc_line_at(bufnr, 1, 0))
   end)
 
   it("refresh_buf() attaches windows showing bufnr", function()

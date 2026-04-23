@@ -39,6 +39,33 @@ function M.check()
   h.ok(string.format("view window: recent_days=%.3f old_days=%.3f curve=%s", cfg.recent_days, cfg.old_days, cfg.curve))
   h.ok(string.format("gradient style: %s", cfg.gradient.style))
 
+  if cfg.jj.enabled then
+    local jj = vim.fn.exepath("jj")
+    if jj == "" then
+      h.ok("jj integration enabled but jj not found; integration will stay inactive")
+    else
+      h.ok("jj found: " .. jj)
+      vim.fn.system("jj root 2>&1")
+      if vim.v.shell_error ~= 0 then
+        h.ok("current directory is not a jj repo; jj integration will stay inactive")
+      else
+        local commit_id = vim.fn.system("jj log -r @ --no-graph -T commit_id 2>&1"):match("([0-9a-fA-F]+)")
+        if vim.v.shell_error == 0 and commit_id and #commit_id == 40 then
+          if commit_id:match("^0+$") then
+            h.ok("jj current @ resolves to Git zero SHA; zero-SHA blame lines will be marked")
+          else
+            h.ok("jj current @ id resolved: " .. commit_id:sub(1, 12))
+            h.ok("zero-SHA blame lines in this jj repo will also be marked as current changes")
+          end
+        else
+          h.warn("jj repo detected, but current @ did not resolve to a 40-character id")
+        end
+      end
+    end
+  else
+    h.ok("jj integration is disabled")
+  end
+
   if cfg.debug then
     h.warn("debug mode is active; extra notifications will appear")
   else

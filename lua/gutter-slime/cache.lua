@@ -32,8 +32,9 @@ end
 ---@param changedtick integer
 ---@param buckets integer[]
 ---@param timestamps integer[]
+---@param jj_current? table<integer, boolean>
 ---@return boolean  true if stored, false if stale
-function M.store(bufnr, request_id, changedtick, buckets, timestamps)
+function M.store(bufnr, request_id, changedtick, buckets, timestamps, jj_current)
   local entry = _store[bufnr]
   if not entry or entry.request_id ~= request_id then
     return false
@@ -41,6 +42,7 @@ function M.store(bufnr, request_id, changedtick, buckets, timestamps)
   entry.changedtick = changedtick
   entry.buckets = buckets
   entry.timestamps = timestamps
+  entry.jj_current = jj_current
   return true
 end
 
@@ -83,6 +85,21 @@ function M.get_timestamps(bufnr)
   return entry and entry.timestamps or nil
 end
 
+---@param bufnr integer
+---@param lnum integer
+---@return boolean
+function M.is_jj_current(bufnr, lnum)
+  local entry = _store[bufnr]
+  return entry and entry.jj_current and entry.jj_current[lnum] or false
+end
+
+---@param bufnr integer
+---@return table<integer, boolean>|nil
+function M.get_jj_current(bufnr)
+  local entry = _store[bufnr]
+  return entry and entry.jj_current or nil
+end
+
 --- Return cached changedtick for bufnr.
 ---@param bufnr integer
 ---@return integer|nil
@@ -107,6 +124,7 @@ function M._ensure(bufnr)
       request_id = 0,
       buckets = nil,
       timestamps = nil,
+      jj_current = nil,
     }
   end
   return _store[bufnr]

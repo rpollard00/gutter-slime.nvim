@@ -65,6 +65,22 @@ describe("palette", function()
     assert.equals("%#GutterSlimeBucket3# %##", palette.fragment_for_bucket(100))
   end)
 
+  it("fragment_for_bucket() can render the jj current marker", function()
+    config.setup({ jj = { marker = "@" } })
+    palette.build()
+
+    assert.equals("%#GutterSlimeBucket1JjCurrent#@%##", palette.fragment_for_bucket(1, { jj_current = true }))
+  end)
+
+  it("uses jj.marker_hl for jj current marker foreground", function()
+    vim.api.nvim_set_hl(0, "GutterSlimeJjMarker", { fg = "#123456" })
+    config.setup({ jj = { marker_hl = "GutterSlimeJjMarker" } })
+    palette.build()
+
+    local hl = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket1JjCurrent", link = false })
+    assert.equals(0x123456, hl.fg)
+  end)
+
   it("defaults to monotone gradient style", function()
     local desc = palette.describe()
     assert.equals("monotone", desc.style)

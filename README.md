@@ -88,6 +88,12 @@ require("gutter-slime").setup({
       uncommitted = nil, -- optional override for bucket 0
     },
   },
+  jj = {
+    enabled = true,         -- auto-detect jj repos; set false to disable
+    current_change = true,  -- mark lines attributed to jj's current @ commit
+    marker = "▌",
+    marker_hl = nil,        -- optional highlight group whose fg colors the marker
+  },
   debug = false,
 })
 ```
@@ -109,6 +115,17 @@ indistinguishable adjacent buckets on low-contrast themes. Built-in styles use
 `gradient.min_contrast_by_style` defaults tuned for their luminance range; if
 you explicitly set `gradient.min_contrast`, that global value overrides the
 style defaults. Custom gradients are rendered as authored.
+
+Jujutsu support is auto-detected and safe for Git-only repositories. When `jj`
+is available and the buffer is inside a jj repository using the Git backend,
+gutter-slime resolves jj's current `@` id and overlays `jj.marker` on lines
+whose Git blame SHA matches that id. Because current jj working-copy changes may
+show up in Git blame as the all-zero "not committed yet" SHA, zero-SHA blame
+lines are also marked while inside a detected jj repo. The marker foreground is
+chosen per bucket from theme/git/diagnostic foregrounds with enough contrast,
+falling back to black or white when the theme colors would be unreadable. Set
+`jj.marker_hl` to force a specific marker color, or `jj.enabled = false` to skip
+all jj detection.
 
 Gradient styles:
 
@@ -171,7 +188,7 @@ vim.keymap.set("n", "<leader>gs", "<cmd>GutterSlimeSetGradientStyle slime<cr>")
 
 ## Highlight Groups
 
-The plugin defines `GutterSlimeBucket0` through `GutterSlimeBucketN` (where `N = bucket_count`). `GutterSlimeBucket0` is used for uncommitted lines. Override any of them in your colorscheme config:
+The plugin defines `GutterSlimeBucket0` through `GutterSlimeBucketN` (where `N = bucket_count`). `GutterSlimeBucket0` is used for uncommitted lines. When jj current-change markers are enabled, companion groups named like `GutterSlimeBucket1JjCurrent` are used for the marker foreground over the same bucket background. Override any of them in your colorscheme config:
 
 ```lua
 vim.api.nvim_set_hl(0, "GutterSlimeBucket0", { bg = "#ff8800" })

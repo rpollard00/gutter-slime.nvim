@@ -6,7 +6,9 @@ local util = require("gutter-slime.util")
 
 local _built_groups = {}
 local _built_fragments = {}
+local _built_jj_fragments = {}
 local GROUP_PREFIX = "GutterSlimeBucket"
+local JJ_SUFFIX = "JjCurrent"
 
 M.BUCKET_UNCOMMITTED = 0
 
@@ -325,6 +327,82 @@ local function resolve_min_contrast(cfg)
   return cfg.gradient.min_contrast
 end
 
+---@param hex string
+---@return number
+local function relative_luminance(hex)
+  local function channel(c)
+    c = c / 255
+    if c <= 0.03928 then
+      return c / 12.92
+    end
+    return ((c + 0.055) / 1.055) ^ 2.4
+  end
+
+  local r, g, b = util.hex_to_rgb(hex)
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+end
+
+---@param a string
+---@param b string
+---@return number
+local function contrast_ratio(a, b)
+  local la = relative_luminance(a)
+  local lb = relative_luminance(b)
+  if la < lb then
+    la, lb = lb, la
+  end
+  return (la + 0.05) / (lb + 0.05)
+end
+
+---@param cfg table
+---@param bg string
+---@param fallback string
+---@return string
+local function resolve_jj_marker_fg(cfg, bg, fallback)
+  local jj = cfg.jj or {}
+  if jj.marker_hl then
+    local c = util.get_hl_color(jj.marker_hl, "fg")
+    if c then
+      return c
+    end
+  end
+
+  local candidates = {}
+  local function add(hex)
+    if hex then
+      candidates[hex] = true
+    end
+  end
+
+  for _, name in ipairs({ "GitSignsChange", "GitSignsAdd", "Added", "Changed", "DiagnosticInfo", "DiagnosticOk", "DiagnosticHint", "Function", "String", "Identifier", "Normal" }) do
+    add(util.get_hl_color(name, "fg"))
+  end
+  add(fallback)
+
+  local best_theme = nil
+  local best_theme_score = -1
+  for hex in pairs(candidates) do
+    local score = contrast_ratio(hex, bg)
+    if score > best_theme_score then
+      best_theme = hex
+      best_theme_score = score
+    end
+  end
+
+  -- This marker is decorative and sits in a one-cell gutter, so prefer a
+  -- theme-derived colour even when it falls short of normal text contrast.
+  -- Falling back too eagerly to black looks especially wrong on dark themes
+  -- and bright built-in palettes like slime.
+  if best_theme and best_theme_score >= 2 then
+    return best_theme
+  end
+
+  if is_dark_bg() then
+    return "#ffffff"
+  end
+  return "#000000"
+end
+
 ---@return { style: string, curve: string, min_contrast: number, base_bg: string, accent: string, committed_stops: string[], uncommitted: string }|nil
 function M.describe()
   local cfg = require("gutter-slime.config").get()
@@ -352,11 +430,18 @@ function M.build()
 
   _built_groups = {}
   _built_fragments = {}
+  _built_jj_fragments = {}
+
+  local jj_marker = cfg.jj.marker
 
   local uncommitted_group = GROUP_PREFIX .. M.BUCKET_UNCOMMITTED
   vim.api.nvim_set_hl(0, uncommitted_group, { bg = desc.uncommitted })
   table.insert(_built_groups, uncommitted_group)
   _built_fragments[M.BUCKET_UNCOMMITTED] = "%#" .. uncommitted_group .. "# %##"
+
+  local uncommitted_jj_group = uncommitted_group .. JJ_SUFFIX
+  vim.api.nvim_set_hl(0, uncommitted_jj_group, { bg = desc.uncommitted, fg = resolve_jj_marker_fg(cfg, desc.uncommitted, desc.accent), bold = true })
+  _built_jj_fragments[M.BUCKET_UNCOMMITTED] = "%#" .. uncommitted_jj_group .. "#" .. jj_marker .. "%##"
 
   local bucket_colors = {}
   for i = 1, n do
@@ -374,6 +459,10 @@ function M.build()
     vim.api.nvim_set_hl(0, group, { bg = bucket_bg })
     table.insert(_built_groups, group)
     _built_fragments[i] = "%#" .. group .. "# %##"
+
+    local jj_group = group .. JJ_SUFFIX
+    vim.api.nvim_set_hl(0, jj_group, { bg = bucket_bg, fg = resolve_jj_marker_fg(cfg, bucket_bg, desc.accent), bold = true })
+    _built_jj_fragments[i] = "%#" .. jj_group .. "#" .. jj_marker .. "%##"
   end
 
   util.debug(
@@ -398,8 +487,19 @@ function M.group_for_bucket(bucket_id)
 end
 
 ---@param bucket_id integer
+---@param opts? { jj_current?: boolean }
 ---@return string
-function M.fragment_for_bucket(bucket_id)
+function M.fragment_for_bucket(bucket_id, opts)
+  if opts and opts.jj_current then
+    local jj_fragment = _built_jj_fragments[bucket_id]
+    if jj_fragment then
+      return jj_fragment
+    end
+
+    local cfg = require("gutter-slime.config").get()
+    return "%#" .. M.group_for_bucket(bucket_id) .. JJ_SUFFIX .. "#" .. cfg.jj.marker .. "%##"
+  end
+
   local fragment = _built_fragments[bucket_id]
   if fragment then
     return fragment
