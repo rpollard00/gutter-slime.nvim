@@ -106,6 +106,10 @@ Pass an options table to |setup()|. All fields are optional. >lua
       -- "smooth". This does not affect age-to-bucket mapping.
       curve = "linear",
 
+      -- Minimum adjacent bucket luminance gap for built-in styles. Set to 0
+      -- to disable. Custom gradients are rendered as authored.
+      min_contrast = 8,
+
       -- Optional highlight group whose foreground colour is used as the
       -- bright accent endpoint for theme-based styles.
       accent_hl = nil,
@@ -131,6 +135,9 @@ Pass an options table to |setup()|. All fields are optional. >lua
 The top-level `curve` controls how line ages are assigned to buckets.
 `gradient.curve` only controls how those buckets sample the visible colour
 ramp.
+`gradient.min_contrast` protects built-in styles from collapsing into
+indistinguishable adjacent buckets on low-contrast themes. Custom gradients are
+rendered as authored.
 
 Gradient styles:
 

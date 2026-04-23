@@ -267,7 +267,54 @@ local function apply_gradient_curve(pos, curve)
   return pos
 end
 
----@return { style: string, curve: string, base_bg: string, accent: string, committed_stops: string[], uncommitted: string }|nil
+---@param hex string
+---@return number
+local function luminance(hex)
+  local r, g, b = util.hex_to_rgb(hex)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+end
+
+---@param colors string[]
+---@param base_bg string
+---@param min_delta number
+local function enforce_bucket_contrast(colors, base_bg, min_delta)
+  if min_delta <= 0 then
+    return
+  end
+
+  local base_lum = luminance(base_bg)
+  local fresh_target = base_lum < 128 and "#ffffff" or "#000000"
+  if #colors > 0 and math.abs(base_lum - luminance(colors[1])) < min_delta then
+    local current = colors[1]
+    local best = current
+    for step = 1, 10 do
+      local candidate = util.blend_hex(current, fresh_target, step / 10)
+      best = candidate
+      if math.abs(base_lum - luminance(candidate)) >= min_delta then
+        break
+      end
+    end
+    colors[1] = best
+  end
+
+  for i = 2, #colors do
+    local prev_lum = luminance(colors[i - 1])
+    local current = colors[i]
+    if math.abs(prev_lum - luminance(current)) < min_delta then
+      local best = current
+      for step = 1, 10 do
+        local candidate = util.blend_hex(current, base_bg, step / 10)
+        best = candidate
+        if math.abs(prev_lum - luminance(candidate)) >= min_delta then
+          break
+        end
+      end
+      colors[i] = best
+    end
+  end
+end
+
+---@return { style: string, curve: string, min_contrast: number, base_bg: string, accent: string, committed_stops: string[], uncommitted: string }|nil
 function M.describe()
   local cfg = require("gutter-slime.config").get()
   local base_bg = resolve_base_bg()
@@ -276,6 +323,7 @@ function M.describe()
   return {
     style = cfg.gradient.style,
     curve = cfg.gradient.curve,
+    min_contrast = cfg.gradient.min_contrast,
     base_bg = base_bg,
     accent = accent,
     committed_stops = vim.deepcopy(committed_stops),
@@ -299,10 +347,18 @@ function M.build()
   table.insert(_built_groups, uncommitted_group)
   _built_fragments[M.BUCKET_UNCOMMITTED] = "%#" .. uncommitted_group .. "# %##"
 
+  local bucket_colors = {}
   for i = 1, n do
     local pos = 1 - ((i - 1) / math.max(n - 1, 1))
     local curved = util.clamp(apply_gradient_curve(pos, cfg.gradient.curve), 0, 1)
-    local bucket_bg = util.sample_hex_gradient(desc.committed_stops, curved)
+    bucket_colors[i] = util.sample_hex_gradient(desc.committed_stops, curved)
+  end
+
+  if desc.style ~= "custom" then
+    enforce_bucket_contrast(bucket_colors, desc.base_bg, desc.min_contrast)
+  end
+
+  for i, bucket_bg in ipairs(bucket_colors) do
     local group = GROUP_PREFIX .. i
     vim.api.nvim_set_hl(0, group, { bg = bucket_bg })
     table.insert(_built_groups, group)

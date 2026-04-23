@@ -69,6 +69,7 @@ describe("palette", function()
     local desc = palette.describe()
     assert.equals("monotone", desc.style)
     assert.equals("linear", desc.curve)
+    assert.equals(8, desc.min_contrast)
     assert.equals(3, #desc.committed_stops)
   end)
 
@@ -84,6 +85,12 @@ describe("palette", function()
     config.setup({ gradient = { curve = "invalid" } })
 
     assert.equals("linear", config.get().gradient.curve)
+  end)
+
+  it("falls back to default minimum contrast for invalid values", function()
+    config.setup({ gradient = { min_contrast = -1 } })
+
+    assert.equals(8, config.get().gradient.min_contrast)
   end)
 
   it("supports vibrant, muted, slime, rainbow, and thermal preset styles", function()
@@ -155,6 +162,35 @@ describe("palette", function()
     assert.equals(0x000000, oldest)
     assert.equals(0xffffff, freshest)
     assert.not_equals(0x777777, middle)
+  end)
+
+  it("enforces minimum contrast for built-in gradients", function()
+    vim.api.nvim_set_hl(0, "SignColumn", { bg = "#000000" })
+    vim.api.nvim_set_hl(0, "LineNr", { bg = "#000000" })
+    vim.api.nvim_set_hl(0, "Normal", { bg = "#000000" })
+    vim.api.nvim_set_hl(0, "DiagnosticInfo", { fg = "#202020" })
+
+    config.setup({
+      bucket_count = 2,
+      gradient = {
+        style = "monotone",
+        min_contrast = 20,
+        accent_hl = "DiagnosticInfo",
+      },
+    })
+    palette.build()
+
+    local freshest = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket1", link = false }).bg
+    local oldest = vim.api.nvim_get_hl(0, { name = "GutterSlimeBucket2", link = false }).bg
+
+    local function luminance(rgb)
+      local r = math.floor(rgb / 0x10000) % 0x100
+      local g = math.floor(rgb / 0x100) % 0x100
+      local b = rgb % 0x100
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    end
+
+    assert.is_true(math.abs(luminance(freshest) - luminance(oldest)) >= 20)
   end)
 
   it("uses custom gradient stops and uncommitted override", function()

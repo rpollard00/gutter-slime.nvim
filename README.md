@@ -68,6 +68,7 @@ require("gutter-slime").setup({
   gradient = {
     style = "monotone", -- monotone | vibrant | muted | slime | rainbow | thermal | custom
     curve = "linear",   -- linear | recent | old | smooth; visual color sampling only
+    min_contrast = 8,    -- minimum adjacent bucket luminance gap for built-in styles; 0 disables
     accent_hl = nil,     -- highlight group whose fg drives theme-based styles
     custom = {
       stops = {},        -- oldest to freshest color stops
@@ -82,6 +83,9 @@ require("gutter-slime").setup({
 
 The top-level `curve` controls how line ages are assigned to buckets.
 `gradient.curve` only controls how those buckets sample the visual color ramp.
+`gradient.min_contrast` protects built-in styles from collapsing into
+indistinguishable adjacent buckets on low-contrast themes. Custom gradients are
+rendered as authored.
 
 Gradient styles:
 

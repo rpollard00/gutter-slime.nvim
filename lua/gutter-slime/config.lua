@@ -36,7 +36,7 @@ local VALID_GRADIENT_STYLES = {
 ---@field show_uncommitted boolean
 ---@field disable_in_diff boolean
 ---@field accent_hl string|nil
----@field gradient { style: string, curve: string, accent_hl: string|nil, custom: { stops: string[], uncommitted: string|nil } }
+---@field gradient { style: string, curve: string, min_contrast: number, accent_hl: string|nil, custom: { stops: string[], uncommitted: string|nil } }
 ---@field debug boolean
 
 ---@type GutterSlimeConfig
@@ -53,6 +53,7 @@ M.defaults = {
   gradient = {
     style = "monotone",
     curve = "linear",
+    min_contrast = 8,
     accent_hl = nil,
     custom = {
       stops = {},
@@ -121,6 +122,11 @@ local function normalize_gradient(cfg)
   if type(gradient.curve) ~= "string" or not VALID_CURVES[gradient.curve] then
     notify("gradient.curve must be one of linear, recent, old, smooth; using default", vim.log.levels.WARN)
     gradient.curve = defaults.curve
+  end
+
+  if type(gradient.min_contrast) ~= "number" or gradient.min_contrast < 0 then
+    notify("gradient.min_contrast must be a non-negative number; using default", vim.log.levels.WARN)
+    gradient.min_contrast = defaults.min_contrast
   end
 
   if gradient.accent_hl ~= nil and type(gradient.accent_hl) ~= "string" then
