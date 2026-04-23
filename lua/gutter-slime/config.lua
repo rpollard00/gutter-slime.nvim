@@ -4,6 +4,7 @@
 local M = {}
 
 local VIEW_KEYS = {
+  bucket_mode = true,
   recent_days = true,
   old_days = true,
   curve = true,
@@ -26,13 +27,21 @@ local VALID_GRADIENT_STYLES = {
   custom = true,
 }
 
+local VALID_BUCKET_MODES = {
+  absolute = true,
+  relative_time = true,
+  relative_quantile = true,
+}
+
 ---@class GutterSlimeConfig
 ---@field enabled boolean
 ---@field debounce_ms integer
 ---@field bucket_count integer
+---@field bucket_mode string
 ---@field recent_days number|string
 ---@field old_days number|string
 ---@field curve string
+---@field relative { curve: string, min_span_days: number|string }
 ---@field show_uncommitted boolean
 ---@field disable_in_diff boolean
 ---@field accent_hl string|nil
@@ -44,9 +53,14 @@ M.defaults = {
   enabled = true,
   debounce_ms = 150,
   bucket_count = 7,
+  bucket_mode = "absolute",
   recent_days = 0,
   old_days = 180,
   curve = "recent",
+  relative = {
+    curve = "linear",
+    min_span_days = 0,
+  },
   show_uncommitted = true,
   disable_in_diff = true,
   accent_hl = nil,
@@ -66,8 +80,9 @@ M.defaults = {
 ---@type GutterSlimeConfig
 M.current = vim.deepcopy(M.defaults)
 
----@type { recent_days: number, old_days: number, curve: string }
+---@type { bucket_mode: string, recent_days: number, old_days: number, curve: string }
 M.view_defaults = {
+  bucket_mode = M.defaults.bucket_mode,
   recent_days = M.defaults.recent_days,
   old_days = M.defaults.old_days,
   curve = M.defaults.curve,
@@ -158,6 +173,30 @@ local function normalize_gradient(cfg)
   cfg.accent_hl = gradient.accent_hl
 end
 
+---@param cfg GutterSlimeConfig
+local function normalize_relative(cfg)
+  local defaults = M.defaults.relative
+  local relative = cfg.relative
+
+  if type(relative) ~= "table" then
+    notify("relative must be a table; using defaults", vim.log.levels.WARN)
+    relative = vim.deepcopy(defaults)
+    cfg.relative = relative
+  end
+
+  if type(relative.curve) ~= "string" or not VALID_CURVES[relative.curve] then
+    notify("relative.curve must be one of linear, recent, old, smooth; using default", vim.log.levels.WARN)
+    relative.curve = defaults.curve
+  end
+
+  local min_span, min_span_err = M.parse_duration_days(relative.min_span_days)
+  if min_span == nil then
+    notify("relative.min_span_days " .. min_span_err .. "; using default", vim.log.levels.WARN)
+    min_span = defaults.min_span_days
+  end
+  relative.min_span_days = min_span
+end
+
 ---@param value any
 ---@param opts? { allow_negative?: boolean }
 ---@return number|nil, string|nil
@@ -215,7 +254,7 @@ function M.parse_duration_days(value, opts)
 end
 
 ---@param cfg GutterSlimeConfig
----@param baseline { recent_days: number, old_days: number, curve: string }
+---@param baseline { bucket_mode: string, recent_days: number, old_days: number, curve: string }
 local function normalize(cfg, baseline)
   if type(cfg.debounce_ms) ~= "number" or cfg.debounce_ms < 0 then
     notify("debounce_ms must be a non-negative number; using default", vim.log.levels.WARN)
@@ -225,6 +264,11 @@ local function normalize(cfg, baseline)
   if type(cfg.bucket_count) ~= "number" or cfg.bucket_count < 2 then
     notify("bucket_count must be >= 2; using default", vim.log.levels.WARN)
     cfg.bucket_count = M.defaults.bucket_count
+  end
+
+  if type(cfg.bucket_mode) ~= "string" or not VALID_BUCKET_MODES[cfg.bucket_mode] then
+    notify("bucket_mode must be one of absolute, relative_time, relative_quantile; using default", vim.log.levels.WARN)
+    cfg.bucket_mode = M.defaults.bucket_mode
   end
 
   local recent, recent_err = M.parse_duration_days(cfg.recent_days)
@@ -261,10 +305,12 @@ local function normalize(cfg, baseline)
   end
 
   normalize_gradient(cfg)
+  normalize_relative(cfg)
 
   cfg.recent_days = recent
   cfg.old_days = old
 
+  baseline.bucket_mode = cfg.bucket_mode
   baseline.recent_days = recent
   baseline.old_days = old
   baseline.curve = cfg.curve
@@ -276,6 +322,7 @@ function M.setup(opts)
   if opts == nil then
     M.current = vim.deepcopy(M.defaults)
     M.view_defaults = {
+      bucket_mode = M.defaults.bucket_mode,
       recent_days = M.defaults.recent_days,
       old_days = M.defaults.old_days,
       curve = M.defaults.curve,
@@ -290,6 +337,7 @@ function M.setup(opts)
 
   M.current = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
   M.view_defaults = {
+    bucket_mode = M.defaults.bucket_mode,
     recent_days = M.defaults.recent_days,
     old_days = M.defaults.old_days,
     curve = M.defaults.curve,
@@ -304,7 +352,7 @@ function M.get()
   return M.current
 end
 
----@return { recent_days: number, old_days: number, curve: string }
+---@return { bucket_mode: string, recent_days: number, old_days: number, curve: string }
 function M.get_view_defaults()
   return vim.deepcopy(M.view_defaults)
 end
@@ -312,6 +360,11 @@ end
 ---@return string[]
 function M.curve_names()
   return { "linear", "recent", "old", "smooth" }
+end
+
+---@return string[]
+function M.bucket_mode_names()
+  return { "absolute", "relative_time", "relative_quantile" }
 end
 
 ---@return string[]
@@ -364,12 +417,18 @@ function M.update_view(patch)
   if recent >= old then
     return false, "recent_days must be < old_days"
   end
+  if patch.bucket_mode ~= nil and (type(next_cfg.bucket_mode) ~= "string" or not VALID_BUCKET_MODES[next_cfg.bucket_mode]) then
+    return false, "bucket_mode must be one of absolute, relative_time, relative_quantile"
+  elseif type(next_cfg.bucket_mode) ~= "string" or not VALID_BUCKET_MODES[next_cfg.bucket_mode] then
+    return false, "bucket_mode must be one of absolute, relative_time, relative_quantile"
+  end
   if patch.curve ~= nil and (type(next_cfg.curve) ~= "string" or not VALID_CURVES[next_cfg.curve]) then
     return false, "curve must be one of linear, recent, old, smooth"
   elseif type(next_cfg.curve) ~= "string" or not VALID_CURVES[next_cfg.curve] then
     return false, "curve must be one of linear, recent, old, smooth"
   end
 
+  M.current.bucket_mode = next_cfg.bucket_mode
   M.current.recent_days = recent
   M.current.old_days = old
   M.current.curve = next_cfg.curve
@@ -377,6 +436,7 @@ function M.update_view(patch)
 end
 
 function M.reset_view()
+  M.current.bucket_mode = M.view_defaults.bucket_mode
   M.current.recent_days = M.view_defaults.recent_days
   M.current.old_days = M.view_defaults.old_days
   M.current.curve = M.view_defaults.curve

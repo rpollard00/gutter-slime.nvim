@@ -80,6 +80,10 @@ Pass an options table to |setup()|. All fields are optional. >lua
     -- Number of age buckets for committed lines.
     bucket_count = 7,
 
+    -- Bucket mapping mode. Options: "absolute", "relative_time",
+    -- "relative_quantile".
+    bucket_mode = "absolute",
+
     -- Lines changed within recent_days get mapped to the freshest bucket.
     recent_days = 0,
 
@@ -88,6 +92,15 @@ Pass an options table to |setup()|. All fields are optional. >lua
 
     -- Age weighting curve. Options: "linear", "recent", "old", "smooth".
     curve = "recent",
+
+    relative = {
+      -- Bucket weighting curve for relative modes.
+      curve = "linear",
+
+      -- Collapse relative_time spans smaller than this into the freshest
+      -- bucket. Accepts days or durations like "12h".
+      min_span_days = 0,
+    },
 
     -- Show a distinct highlight for uncommitted/unsaved lines.
     show_uncommitted = true,
@@ -129,10 +142,18 @@ Pass an options table to |setup()|. All fields are optional. >lua
   })
 <
 
-`recent_days` and `old_days` accept Lua numbers as days or strings like
-`"14"`, `"7d"`, and `"48h"`.
+`recent_days`, `old_days`, and `relative.min_span_days` accept Lua numbers as
+days or strings like `"14"`, `"7d"`, and `"48h"`.
 
-The top-level `curve` controls how line ages are assigned to buckets.
+`bucket_mode = "absolute"` uses the top-level `recent_days`, `old_days`, and
+`curve` settings. `bucket_mode = "relative_time"` fits buckets to the oldest
+and newest committed timestamps in each buffer. `bucket_mode =
+"relative_quantile"` fits buckets to the distribution of committed lines in
+each buffer, which gives dense clusters more visual detail. Uncommitted lines
+stay in bucket 0 in all modes.
+
+The top-level `curve` controls how line ages are assigned to buckets in
+absolute mode. `relative.curve` controls relative modes.
 `gradient.curve` only controls how those buckets sample the visible colour
 ramp.
 `gradient.min_contrast` protects built-in styles from collapsing into
@@ -180,6 +201,11 @@ Gradient styles:
                         Set the active gradient style. Valid values are
                         `monotone`, `vibrant`, `muted`, `slime`, `rainbow`,
                         `thermal`, and `custom`.
+
+                                                   *:GutterSlimeSetBucketMode*
+:GutterSlimeSetBucketMode {name}
+                        Set the active bucket mode. Valid values are
+                        `absolute`, `relative_time`, and `relative_quantile`.
 
                                                           *:GutterSlimeSetOld*
 :GutterSlimeSetOld {value}

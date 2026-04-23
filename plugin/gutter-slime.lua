@@ -32,6 +32,15 @@ end, {
   end,
   desc = "Set gutter-slime age curve",
 })
+vim.api.nvim_create_user_command("GutterSlimeSetBucketMode", function(opts)
+  require("gutter-slime").set_bucket_mode(opts.args)
+end, {
+  nargs = 1,
+  complete = function()
+    return require("gutter-slime.config").bucket_mode_names()
+  end,
+  desc = "Set gutter-slime bucket mode",
+})
 vim.api.nvim_create_user_command("GutterSlimeSetGradientStyle", function(opts)
   require("gutter-slime").set_gradient_style(opts.args)
 end, {

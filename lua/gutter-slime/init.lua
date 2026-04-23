@@ -56,7 +56,7 @@ end
 
 ---@param ts integer
 ---@return integer
-local function ts_to_bucket(ts)
+local function ts_to_absolute_bucket(ts)
   if ts == 0 then
     return 0
   end
@@ -88,6 +88,119 @@ local function ts_to_bucket(ts)
   return math.max(1, math.min(bucket, n))
 end
 
+---@param timestamps integer[]
+---@return integer[]
+local function timestamps_to_absolute_buckets(timestamps)
+  local buckets = {}
+  for i, ts in ipairs(timestamps) do
+    buckets[i] = ts_to_absolute_bucket(ts)
+  end
+  return buckets
+end
+
+---@param timestamps integer[]
+---@return integer[]
+local function timestamps_to_relative_time_buckets(timestamps)
+  local cfg = require("gutter-slime.config").get()
+  local util = require("gutter-slime.util")
+  local n = cfg.bucket_count
+  local min_ts = nil
+  local max_ts = nil
+
+  for _, ts in ipairs(timestamps) do
+    if ts > 0 then
+      min_ts = min_ts and math.min(min_ts, ts) or ts
+      max_ts = max_ts and math.max(max_ts, ts) or ts
+    end
+  end
+
+  local buckets = {}
+  if not min_ts or not max_ts then
+    for i, ts in ipairs(timestamps) do
+      buckets[i] = ts == 0 and 0 or 1
+    end
+    return buckets
+  end
+
+  local span_secs = max_ts - min_ts
+  if span_secs <= 0 or (span_secs / 86400) < cfg.relative.min_span_days then
+    for i, ts in ipairs(timestamps) do
+      buckets[i] = ts == 0 and 0 or 1
+    end
+    return buckets
+  end
+
+  for i, ts in ipairs(timestamps) do
+    if ts == 0 then
+      buckets[i] = 0
+    else
+      local pos = (max_ts - ts) / span_secs
+      local curved = util.clamp(apply_curve(pos, cfg.relative.curve), 0, 1)
+      local bucket = math.floor(curved * (n - 1)) + 1
+      buckets[i] = math.max(1, math.min(bucket, n))
+    end
+  end
+  return buckets
+end
+
+---@param timestamps integer[]
+---@return integer[]
+local function timestamps_to_relative_quantile_buckets(timestamps)
+  local cfg = require("gutter-slime.config").get()
+  local util = require("gutter-slime.util")
+  local n = cfg.bucket_count
+  local counts = {}
+  local sorted = {}
+  local total = 0
+
+  for _, ts in ipairs(timestamps) do
+    if ts > 0 then
+      if not counts[ts] then
+        sorted[#sorted + 1] = ts
+        counts[ts] = 0
+      end
+      counts[ts] = counts[ts] + 1
+      total = total + 1
+    end
+  end
+
+  table.sort(sorted, function(a, b)
+    return a > b
+  end)
+
+  local by_timestamp = {}
+  if total > 0 then
+    local seen = 0
+    for _, ts in ipairs(sorted) do
+      local count = counts[ts]
+      local pos = #sorted == 1 and 0 or (seen + ((count - 1) / 2)) / (total - 1)
+      local curved = util.clamp(apply_curve(pos, cfg.relative.curve), 0, 1)
+      local bucket = math.floor(curved * (n - 1)) + 1
+      by_timestamp[ts] = math.max(1, math.min(bucket, n))
+      seen = seen + count
+    end
+  end
+
+  local buckets = {}
+  for i, ts in ipairs(timestamps) do
+    buckets[i] = ts == 0 and 0 or (by_timestamp[ts] or 1)
+  end
+  return buckets
+end
+
+---@param timestamps integer[]
+---@return integer[]
+local function timestamps_to_buckets(timestamps)
+  local mode = require("gutter-slime.config").get().bucket_mode
+  if mode == "relative_time" then
+    return timestamps_to_relative_time_buckets(timestamps)
+  end
+  if mode == "relative_quantile" then
+    return timestamps_to_relative_quantile_buckets(timestamps)
+  end
+  return timestamps_to_absolute_buckets(timestamps)
+end
+
 ---@param bufnr integer
 ---@return boolean
 local function rebucket_buf(bufnr)
@@ -97,10 +210,7 @@ local function rebucket_buf(bufnr)
     return false
   end
 
-  local buckets = {}
-  for i, ts in ipairs(timestamps) do
-    buckets[i] = ts_to_bucket(ts)
-  end
+  local buckets = timestamps_to_buckets(timestamps)
 
   local stored = cache.store(
     bufnr,
@@ -219,12 +329,11 @@ local function apply_real_blame(bufnr)
         return
       end
 
-      local buckets = {}
       local timestamps = {}
       for i, entry in ipairs(result) do
         timestamps[i] = entry.timestamp
-        buckets[i] = ts_to_bucket(entry.timestamp)
       end
+      local buckets = timestamps_to_buckets(timestamps)
 
       local stored = cache.store(bufnr, req_id, request_tick, buckets, timestamps)
       if stored then
@@ -299,6 +408,12 @@ end
 ---@return boolean
 function M.set_curve(name)
   return apply_view_patch({ curve = name }, string.format("gutter-slime curve: %s", name))
+end
+
+---@param mode string
+---@return boolean
+function M.set_bucket_mode(mode)
+  return apply_view_patch({ bucket_mode = mode }, string.format("gutter-slime bucket_mode: %s", mode))
 end
 
 ---@param value string|number
@@ -411,6 +526,7 @@ function M.inspect()
     string.format("  recent_days : %.3f", cfg.recent_days),
     string.format("  old_days    : %.3f", cfg.old_days),
     string.format("  curve       : %s", cfg.curve),
+    string.format("  bucket_mode : %s", cfg.bucket_mode),
   }
 
   local palette = require("gutter-slime.palette")
@@ -475,7 +591,8 @@ function M._redraw_all()
   end
 end
 
-M._ts_to_bucket = ts_to_bucket
+M._ts_to_bucket = ts_to_absolute_bucket
+M._timestamps_to_buckets = timestamps_to_buckets
 M._zoom_ladder_days = ZOOM_LADDER_DAYS
 
 return M

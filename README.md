@@ -59,9 +59,14 @@ require("gutter-slime").setup({
   enabled = true,
   debounce_ms = 150,
   bucket_count = 7,
+  bucket_mode = "absolute", -- absolute | relative_time | relative_quantile
   recent_days = 0,
   old_days = 180,
   curve = "recent",
+  relative = {
+    curve = "linear",       -- linear | recent | old | smooth
+    min_span_days = 0,      -- collapse tiny relative_time spans into the freshest bucket
+  },
   show_uncommitted = true,
   disable_in_diff = true,
   accent_hl = nil,   -- legacy alias for gradient.accent_hl
@@ -79,9 +84,17 @@ require("gutter-slime").setup({
 })
 ```
 
-`recent_days` and `old_days` accept Lua numbers as days or strings like `"14"`, `"7d"`, and `"48h"`.
+`recent_days`, `old_days`, and `relative.min_span_days` accept Lua numbers as days or strings like `"14"`, `"7d"`, and `"48h"`.
 
-The top-level `curve` controls how line ages are assigned to buckets.
+`bucket_mode = "absolute"` uses the top-level `recent_days`, `old_days`, and
+`curve` settings. `bucket_mode = "relative_time"` fits buckets to the oldest
+and newest committed timestamps in each buffer. `bucket_mode =
+"relative_quantile"` fits buckets to the distribution of committed lines in
+each buffer, which gives dense clusters more visual detail. Uncommitted lines
+stay in bucket 0 in all modes.
+
+The top-level `curve` controls how line ages are assigned to buckets in
+absolute mode. `relative.curve` controls relative modes.
 `gradient.curve` only controls how those buckets sample the visual color ramp.
 `gradient.min_contrast` protects built-in styles from collapsing into
 indistinguishable adjacent buckets on low-contrast themes. Custom gradients are
@@ -123,6 +136,7 @@ require("gutter-slime").setup({
 | `:GutterSlimeToggle` | Toggle the heatmap |
 | `:GutterSlimeRefresh` | Force a fresh blame run for the current buffer |
 | `:GutterSlimeInspect` | Print diagnostic state for the current buffer |
+| `:GutterSlimeSetBucketMode {name}` | Set the active bucket mode |
 | `:GutterSlimeSetCurve {name}` | Set the active age curve |
 | `:GutterSlimeSetGradientStyle {name}` | Set the active gradient style |
 | `:GutterSlimeSetOld {value}` | Set the stale edge of the active age window |
@@ -141,6 +155,7 @@ vim.keymap.set("n", "]g", "<cmd>GutterSlimeZoomIn<cr>")
 vim.keymap.set("n", "[g", "<cmd>GutterSlimeZoomOut<cr>")
 vim.keymap.set("n", "<leader>gr", "<cmd>GutterSlimeSetOld 48h<cr>")
 vim.keymap.set("n", "<leader>gl", "<cmd>GutterSlimeSetCurve linear<cr>")
+vim.keymap.set("n", "<leader>gm", "<cmd>GutterSlimeSetBucketMode relative_quantile<cr>")
 vim.keymap.set("n", "<leader>gs", "<cmd>GutterSlimeSetGradientStyle slime<cr>")
 ```
 
