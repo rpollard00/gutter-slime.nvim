@@ -128,7 +128,7 @@ describe("bucket mapping", function()
       gs.setup({ bucket_count = 1 })
     end)
     local cfg = config.get()
-    assert.equals(7, cfg.bucket_count)
+    assert.equals(16, cfg.bucket_count)
   end)
 
   it("maps sub-day windows with linear bucketing", function()

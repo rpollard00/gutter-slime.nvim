@@ -78,7 +78,7 @@ Pass an options table to |setup()|. All fields are optional. >lua
     debounce_ms = 150,
 
     -- Number of age buckets for committed lines.
-    bucket_count = 7,
+    bucket_count = 16,
 
     -- Bucket mapping mode. Options: "absolute", "relative_time",
     -- "relative_quantile".
@@ -119,9 +119,20 @@ Pass an options table to |setup()|. All fields are optional. >lua
       -- "smooth". This does not affect age-to-bucket mapping.
       curve = "linear",
 
-      -- Minimum adjacent bucket luminance gap for built-in styles. Set to 0
-      -- to disable. Custom gradients are rendered as authored.
-      min_contrast = 8,
+      -- Fallback adjacent bucket luminance gap for built-in styles. Set
+      -- explicitly to 0 to disable. Custom gradients are rendered as authored.
+      min_contrast = 4,
+
+      -- Per-style defaults tuned for each built-in gradient's luminance range.
+      -- An explicit min_contrast value in setup() overrides these defaults.
+      min_contrast_by_style = {
+        monotone = 4,
+        vibrant = 4,
+        muted = 2,
+        slime = 4,
+        rainbow = 3,
+        thermal = 4,
+      },
 
       -- Optional highlight group whose foreground colour is used as the
       -- bright accent endpoint for theme-based styles.
@@ -157,8 +168,10 @@ absolute mode. `relative.curve` controls relative modes.
 `gradient.curve` only controls how those buckets sample the visible colour
 ramp.
 `gradient.min_contrast` protects built-in styles from collapsing into
-indistinguishable adjacent buckets on low-contrast themes. Custom gradients are
-rendered as authored.
+indistinguishable adjacent buckets on low-contrast themes. Built-in styles use
+`gradient.min_contrast_by_style` defaults tuned for their luminance range; if
+you explicitly set `gradient.min_contrast`, that global value overrides the
+style defaults. Custom gradients are rendered as authored.
 
 Gradient styles:
 

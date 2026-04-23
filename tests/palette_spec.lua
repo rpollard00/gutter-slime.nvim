@@ -69,7 +69,7 @@ describe("palette", function()
     local desc = palette.describe()
     assert.equals("monotone", desc.style)
     assert.equals("linear", desc.curve)
-    assert.equals(8, desc.min_contrast)
+    assert.equals(4, desc.min_contrast)
     assert.equals(3, #desc.committed_stops)
   end)
 
@@ -90,7 +90,19 @@ describe("palette", function()
   it("falls back to default minimum contrast for invalid values", function()
     config.setup({ gradient = { min_contrast = -1 } })
 
-    assert.equals(8, config.get().gradient.min_contrast)
+    assert.equals(4, config.get().gradient.min_contrast)
+  end)
+
+  it("uses lower practical minimum contrast for muted by default", function()
+    config.setup({ gradient = { style = "muted" } })
+
+    assert.equals(2, palette.describe().min_contrast)
+  end)
+
+  it("explicit global minimum contrast overrides style defaults", function()
+    config.setup({ gradient = { style = "muted", min_contrast = 0 } })
+
+    assert.equals(0, palette.describe().min_contrast)
   end)
 
   it("supports vibrant, muted, slime, rainbow, and thermal preset styles", function()

@@ -58,7 +58,7 @@ The default `PLENARY_DIR` is `~/.local/share/nvim/lazy/plenary.nvim`.
 require("gutter-slime").setup({
   enabled = true,
   debounce_ms = 150,
-  bucket_count = 7,
+  bucket_count = 16,
   bucket_mode = "absolute", -- absolute | relative_time | relative_quantile
   recent_days = 0,
   old_days = 180,
@@ -73,7 +73,15 @@ require("gutter-slime").setup({
   gradient = {
     style = "monotone", -- monotone | vibrant | muted | slime | rainbow | thermal | custom
     curve = "linear",   -- linear | recent | old | smooth; visual color sampling only
-    min_contrast = 8,    -- minimum adjacent bucket luminance gap for built-in styles; 0 disables
+    min_contrast = 4,    -- fallback adjacent bucket luminance gap; 0 disables when explicitly set
+    min_contrast_by_style = {
+      monotone = 4,
+      vibrant = 4,
+      muted = 2,
+      slime = 4,
+      rainbow = 3,
+      thermal = 4,
+    },
     accent_hl = nil,     -- highlight group whose fg drives theme-based styles
     custom = {
       stops = {},        -- oldest to freshest color stops
@@ -97,8 +105,10 @@ The top-level `curve` controls how line ages are assigned to buckets in
 absolute mode. `relative.curve` controls relative modes.
 `gradient.curve` only controls how those buckets sample the visual color ramp.
 `gradient.min_contrast` protects built-in styles from collapsing into
-indistinguishable adjacent buckets on low-contrast themes. Custom gradients are
-rendered as authored.
+indistinguishable adjacent buckets on low-contrast themes. Built-in styles use
+`gradient.min_contrast_by_style` defaults tuned for their luminance range; if
+you explicitly set `gradient.min_contrast`, that global value overrides the
+style defaults. Custom gradients are rendered as authored.
 
 Gradient styles:
 

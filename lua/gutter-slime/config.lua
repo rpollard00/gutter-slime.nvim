@@ -45,14 +45,14 @@ local VALID_BUCKET_MODES = {
 ---@field show_uncommitted boolean
 ---@field disable_in_diff boolean
 ---@field accent_hl string|nil
----@field gradient { style: string, curve: string, min_contrast: number, accent_hl: string|nil, custom: { stops: string[], uncommitted: string|nil } }
+---@field gradient { style: string, curve: string, min_contrast: number, min_contrast_by_style: table<string, number>, accent_hl: string|nil, custom: { stops: string[], uncommitted: string|nil } }
 ---@field debug boolean
 
 ---@type GutterSlimeConfig
 M.defaults = {
   enabled = true,
   debounce_ms = 150,
-  bucket_count = 7,
+  bucket_count = 16,
   bucket_mode = "absolute",
   recent_days = 0,
   old_days = 180,
@@ -67,7 +67,15 @@ M.defaults = {
   gradient = {
     style = "monotone",
     curve = "linear",
-    min_contrast = 8,
+    min_contrast = 4,
+    min_contrast_by_style = {
+      monotone = 4,
+      vibrant = 4,
+      muted = 2,
+      slime = 4,
+      rainbow = 3,
+      thermal = 4,
+    },
     accent_hl = nil,
     custom = {
       stops = {},
@@ -142,6 +150,18 @@ local function normalize_gradient(cfg)
   if type(gradient.min_contrast) ~= "number" or gradient.min_contrast < 0 then
     notify("gradient.min_contrast must be a non-negative number; using default", vim.log.levels.WARN)
     gradient.min_contrast = defaults.min_contrast
+  end
+
+  if type(gradient.min_contrast_by_style) ~= "table" then
+    notify("gradient.min_contrast_by_style must be a table; using defaults", vim.log.levels.WARN)
+    gradient.min_contrast_by_style = vim.deepcopy(defaults.min_contrast_by_style)
+  else
+    for style, value in pairs(gradient.min_contrast_by_style) do
+      if not VALID_GRADIENT_STYLES[style] or style == "custom" or type(value) ~= "number" or value < 0 then
+        notify("gradient.min_contrast_by_style entries must map built-in styles to non-negative numbers; removing invalid entry", vim.log.levels.WARN)
+        gradient.min_contrast_by_style[style] = nil
+      end
+    end
   end
 
   if gradient.accent_hl ~= nil and type(gradient.accent_hl) ~= "string" then
@@ -336,6 +356,13 @@ function M.setup(opts)
   end
 
   M.current = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
+  if
+    type(opts.gradient) == "table"
+    and opts.gradient.min_contrast ~= nil
+    and opts.gradient.min_contrast_by_style == nil
+  then
+    M.current.gradient.min_contrast_by_style = {}
+  end
   M.view_defaults = {
     bucket_mode = M.defaults.bucket_mode,
     recent_days = M.defaults.recent_days,

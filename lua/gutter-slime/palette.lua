@@ -314,6 +314,17 @@ local function enforce_bucket_contrast(colors, base_bg, min_delta)
   end
 end
 
+---@param cfg table
+---@return number
+local function resolve_min_contrast(cfg)
+  local style = cfg.gradient.style
+  local by_style = cfg.gradient.min_contrast_by_style or {}
+  if type(by_style[style]) == "number" then
+    return by_style[style]
+  end
+  return cfg.gradient.min_contrast
+end
+
 ---@return { style: string, curve: string, min_contrast: number, base_bg: string, accent: string, committed_stops: string[], uncommitted: string }|nil
 function M.describe()
   local cfg = require("gutter-slime.config").get()
@@ -323,7 +334,7 @@ function M.describe()
   return {
     style = cfg.gradient.style,
     curve = cfg.gradient.curve,
-    min_contrast = cfg.gradient.min_contrast,
+    min_contrast = resolve_min_contrast(cfg),
     base_bg = base_bg,
     accent = accent,
     committed_stops = vim.deepcopy(committed_stops),
