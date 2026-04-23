@@ -21,8 +21,6 @@ Brighter gutter cells indicate recently changed lines. Darker cells indicate old
 
 ## Installation
 
-No LuaRocks or external plugin dependencies are required.
-
 **lazy.nvim**
 
 ```lua
@@ -193,15 +191,6 @@ The plugin defines `GutterSlimeBucket0` through `GutterSlimeBucketN` (where `N =
 ```lua
 vim.api.nvim_set_hl(0, "GutterSlimeBucket0", { bg = "#ff8800" })
 ```
-
-## Implementation Phases
-
-- **Phase 0** (complete): Project scaffold, config, commands, health check
-- **Phase 1** (complete): Theme-aware bucket palette and gutter rendering
-- **Phase 2** (complete): Async `git blame --incremental` for tracked files
-- **Phase 3** (complete): Dirty-buffer blame and uncommitted line support
-- **Phase 4** (complete): `statuscolumn` strip renderer with window-local attach/detach
-- **Phase 5** (current): Release polish, adjustable age mapping, and view controls
 
 ## License
 
