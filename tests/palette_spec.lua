@@ -51,6 +51,20 @@ describe("palette", function()
     assert.equals("GutterSlimeBucket" .. cfg.bucket_count, g)
   end)
 
+  it("fragment_for_bucket() returns cached statuscolumn highlight fragments", function()
+    palette.build()
+
+    assert.equals("%#GutterSlimeBucket0# %##", palette.fragment_for_bucket(0))
+    assert.equals("%#GutterSlimeBucket1# %##", palette.fragment_for_bucket(1))
+  end)
+
+  it("fragment_for_bucket() clamps committed buckets", function()
+    config.setup({ bucket_count = 3 })
+    palette.build()
+
+    assert.equals("%#GutterSlimeBucket3# %##", palette.fragment_for_bucket(100))
+  end)
+
   it("defaults to monotone gradient style", function()
     local desc = palette.describe()
     assert.equals("monotone", desc.style)

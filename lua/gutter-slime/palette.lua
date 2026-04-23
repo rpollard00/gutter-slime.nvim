@@ -5,6 +5,7 @@ local M = {}
 local util = require("gutter-slime.util")
 
 local _built_groups = {}
+local _built_fragments = {}
 local GROUP_PREFIX = "GutterSlimeBucket"
 
 M.BUCKET_UNCOMMITTED = 0
@@ -291,10 +292,12 @@ function M.build()
   end
 
   _built_groups = {}
+  _built_fragments = {}
 
   local uncommitted_group = GROUP_PREFIX .. M.BUCKET_UNCOMMITTED
   vim.api.nvim_set_hl(0, uncommitted_group, { bg = desc.uncommitted })
   table.insert(_built_groups, uncommitted_group)
+  _built_fragments[M.BUCKET_UNCOMMITTED] = "%#" .. uncommitted_group .. "# %##"
 
   for i = 1, n do
     local pos = 1 - ((i - 1) / math.max(n - 1, 1))
@@ -303,6 +306,7 @@ function M.build()
     local group = GROUP_PREFIX .. i
     vim.api.nvim_set_hl(0, group, { bg = bucket_bg })
     table.insert(_built_groups, group)
+    _built_fragments[i] = "%#" .. group .. "# %##"
   end
 
   util.debug(
@@ -324,6 +328,17 @@ function M.group_for_bucket(bucket_id)
   local cfg = require("gutter-slime.config").get()
   local clamped = math.max(1, math.min(bucket_id, cfg.bucket_count))
   return GROUP_PREFIX .. clamped
+end
+
+---@param bucket_id integer
+---@return string
+function M.fragment_for_bucket(bucket_id)
+  local fragment = _built_fragments[bucket_id]
+  if fragment then
+    return fragment
+  end
+
+  return "%#" .. M.group_for_bucket(bucket_id) .. "# %##"
 end
 
 return M

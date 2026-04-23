@@ -32,8 +32,7 @@ function M._stc_line_at(bufnr, lnum, virtnum)
     return " "
   end
 
-  local group = palette.group_for_bucket(bucket)
-  return "%#" .. group .. "# %##"
+  return palette.fragment_for_bucket(bucket)
 end
 
 ---@return string
