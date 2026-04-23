@@ -150,4 +150,12 @@ describe("palette", function()
     config.setup({ accent_hl = "Function" })
     assert.equals("Function", config.get().gradient.accent_hl)
   end)
+
+  it("samples gradients in linear color space", function()
+    local util = require("gutter-slime.util")
+
+    assert.equals("#000000", util.blend_hex("#000000", "#ffffff", 0))
+    assert.equals("#ffffff", util.blend_hex("#000000", "#ffffff", 1))
+    assert.equals("#bcbcbc", util.blend_hex("#000000", "#ffffff", 0.5))
+  end)
 end)

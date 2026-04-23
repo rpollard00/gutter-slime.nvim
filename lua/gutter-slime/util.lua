@@ -96,6 +96,28 @@ function M.rgb_to_hex(r, g, b)
   return string.format("#%02x%02x%02x", r, g, b)
 end
 
+---@param channel integer
+---@return number
+local function srgb_to_linear(channel)
+  local c = M.clamp(channel, 0, 255) / 255
+  if c <= 0.04045 then
+    return c / 12.92
+  end
+  return ((c + 0.055) / 1.055) ^ 2.4
+end
+
+---@param value number
+---@return integer
+local function linear_to_srgb(value)
+  local c = M.clamp(value, 0, 1)
+  if c <= 0.0031308 then
+    c = c * 12.92
+  else
+    c = 1.055 * (c ^ (1 / 2.4)) - 0.055
+  end
+  return math.floor((c * 255) + 0.5)
+end
+
 --- Blend two hex colors.
 ---@param a string
 ---@param b string
@@ -105,9 +127,9 @@ function M.blend_hex(a, b, t)
   local ar, ag, ab = M.hex_to_rgb(a)
   local br, bg, bb = M.hex_to_rgb(b)
   return M.rgb_to_hex(
-    math.floor(M.lerp(ar, br, t) + 0.5),
-    math.floor(M.lerp(ag, bg, t) + 0.5),
-    math.floor(M.lerp(ab, bb, t) + 0.5)
+    linear_to_srgb(M.lerp(srgb_to_linear(ar), srgb_to_linear(br), t)),
+    linear_to_srgb(M.lerp(srgb_to_linear(ag), srgb_to_linear(bg), t)),
+    linear_to_srgb(M.lerp(srgb_to_linear(ab), srgb_to_linear(bb), t))
   )
 end
 
