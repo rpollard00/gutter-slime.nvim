@@ -18,6 +18,7 @@ describe("render", function()
   after_each(function()
     -- Always clean up attached windows so state doesn't leak between tests.
     render.detach_all()
+    vim.wo[vim.api.nvim_get_current_win()].statuscolumn = ""
   end)
 
   -- -------------------------------------------------------------------------
@@ -41,6 +42,20 @@ describe("render", function()
     render.detach_win(winid)
 
     assert.equals(original, vim.wo[winid].statuscolumn)
+  end)
+
+  it("attach_win() preserves an existing statuscolumn expression", function()
+    local winid = vim.api.nvim_get_current_win()
+    vim.wo[winid].statuscolumn = "%l"
+
+    render.attach_win(winid)
+    local attached = vim.wo[winid].statuscolumn
+
+    assert.is_truthy(attached:find("^%%l"))
+    assert.is_truthy(attached:find("gutter%-slime"))
+
+    render.detach_win(winid)
+    assert.equals("%l", vim.wo[winid].statuscolumn)
   end)
 
   it("attach_win() is idempotent (double attach stays attached once)", function()

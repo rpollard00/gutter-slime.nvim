@@ -239,11 +239,11 @@ Run |:checkhealth| gutter-slime to verify:
 ==============================================================================
 9. FAQ                                                       *gutter-slime-faq*
 
-Q: My existing statuscolumn config is gone after enabling gutter-slime.
+Q: How does gutter-slime interact with my existing statuscolumn config?
 
-A: The plugin prepends its cell to your existing `statuscolumn` expression.
-   If you had a complex expression that is now broken, please open an issue.
-   A composable rendering mode is planned for a future release.
+A: When a window already has a non-empty `statuscolumn` expression, the plugin
+   appends its cell and restores the original expression on detach. Windows
+   with an empty statuscolumn use gutter-slime's built-in signs/numbers layout.
 
 Q: The gutter looks the same for all lines.
 

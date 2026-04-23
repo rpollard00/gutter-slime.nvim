@@ -10,6 +10,7 @@ Brighter gutter cells indicate recently changed lines. Darker cells indicate old
 - Configurable gradient styles: monotone, vibrant, muted, slime, rainbow, thermal, or custom stops
 - Adjustable age buckets with curve presets and zoom helpers
 - Uncommitted/unsaved line highlighting
+- Composes with an existing non-empty `statuscolumn` expression
 - Async git blame with debouncing and caching
 - Graceful handling of non-git buffers, diff windows, and special URI buffers
 

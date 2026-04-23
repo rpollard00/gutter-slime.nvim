@@ -10,8 +10,8 @@ local _attached = {}
 
 -- `%*` is unreliable inside `%{%...%}`. `%##` resets to Normal safely.
 -- The trailing literal space preserves the usual gap between gutter and text.
-local _STC = "%s%=%{&nu?(&rnu?v:relnum==0?v:lnum:v:relnum:v:lnum):''}"
-  .. " %{%v:lua.require('gutter-slime.render')._stc_line()%} "
+local _SLIME_STC = " %{%v:lua.require('gutter-slime.render')._stc_line()%} "
+local _DEFAULT_STC = "%s%=%{&nu?(&rnu?v:relnum==0?v:lnum:v:relnum:v:lnum):''}" .. _SLIME_STC
 
 ---@param bufnr integer
 ---@param lnum integer
@@ -57,7 +57,7 @@ function M.attach_win(winid)
 
   local prev = vim.wo[winid].statuscolumn
   _attached[winid] = { prev_stc = prev }
-  vim.wo[winid].statuscolumn = _STC
+  vim.wo[winid].statuscolumn = prev ~= "" and (prev .. _SLIME_STC) or _DEFAULT_STC
 
   vim.api.nvim_win_call(winid, function()
     vim.cmd("redrawstatus")
